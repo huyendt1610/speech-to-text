@@ -4,7 +4,10 @@
 import speech_recognition as sr 
 import pyttsx # pip 
 
+r = sr.Recognizer() 
+
 def record_text():
+    ưhil
     return 
 
 def output_text(text):
