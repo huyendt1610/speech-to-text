@@ -2,5 +2,9 @@
 venv/
 __pycache__/
 *.pyc
-dataset_cache
+data/
 saved_models/
+*.pt
+*.bin
+*.ckpt
+images/

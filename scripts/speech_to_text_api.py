@@ -1,4 +1,4 @@
-# pip3 install speechrecognition 
+# pip3 install speechrecognition // Open source library to call APIs to google, bing but with token/key (no key => easy to be Forbidden if overlimit)
 # pip3 install pyttsx3 // Text To Speech x3 
 # //pip install pyaudio
 
@@ -7,6 +7,7 @@ import pyttsx3 # pip
 from pydub import AudioSegment # pip install pydub
 from pydub.utils import make_chunks
 import os 
+from pathlib import Path
 
 r = sr.Recognizer() # Initialize the recognizer
 
@@ -38,12 +39,12 @@ def output_text(text):
         f.write("\n")
     return 
 
-def decode_audio(path):
+def decode_audio(path, language="en-US"):
     with sr.AudioFile(path) as source:
         audio = r.record(source)   # đọc toàn bộ file
 
-    text = r.recognize_google(audio, language="en-US")
-    print(text)
+    text = r.recognize_google(audio, language) 
+    return text
 
 def decode_whole_file(path, chunk_length_ms=30_000, language="en-US", temp_folder="temp_chunks"):
     os.makedirs(temp_folder, exist_ok=True)
@@ -61,19 +62,15 @@ def decode_whole_file(path, chunk_length_ms=30_000, language="en-US", temp_folde
     r = sr.Recognizer()
     full_text = ""
     
+    print(temp_folder)
+   
     # Lưu tạm chunks ra file
-    for i, chunk in enumerate(chunks):
-        chunk_name = f"temp/chunk_{i}.wav"
-        chunk.export(chunk_name, format="wav")
-    
     for i, chunk in enumerate(chunks):
         chunk_name = os.path.join(temp_folder, f"chunk_{i}.wav")
         chunk.export(chunk_name, format="wav")
         
-        with sr.AudioFile(chunk_name) as source:
-            audio_data = r.record(source)
         try:
-            text = r.recognize_google(audio_data, language=language)
+            text = decode_audio(chunk_name, language=language)
             full_text += text + " "
         except sr.UnknownValueError:
             print(f"[Warning] Chunk {i} could not be understood")
@@ -87,8 +84,13 @@ def decode_whole_file(path, chunk_length_ms=30_000, language="en-US", temp_folde
     return full_text.strip()
 
 if __name__ == "__main__":
-    while (1):
-        text = record_text() 
-        # output_text(text) 
+    TEMP_DIR = Path("data/temp")
+    TEMP_DIR.mkdir(exist_ok=True)
 
-        print("Recognized text: ", text)
+    txt = decode_whole_file(r"C:\Users\HuyenDT\Downloads\LibriSpeech\dev-clean\84\121123\84-121123-0002.flac")
+    print(txt)
+    # while (1):
+    #     text = record_text() 
+    #     # output_text(text) 
+
+    #     print("Recognized text: ", text)

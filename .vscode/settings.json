@@ -1,0 +1,9 @@
+{
+    "python.analysis.extraPaths": [
+        "./src"
+    ],
+    "jupyter.jupyterServer.kernelIdleTimeout": 0,
+    "jupyter.askForKernelRestart": false,
+    "jupyter.interactiveWindow.creationMode": "perFile"
+    
+}
