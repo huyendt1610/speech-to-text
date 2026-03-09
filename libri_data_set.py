@@ -245,6 +245,8 @@ def main():
     LEARNING_RATE = 1e-4 # 10^(-4)
     NUM_WORKERS = 2 # no of CPU (if has data preload => set NUM_WORKERS = 0)
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    NUM_WARMUPS_STEPS = np.floor(0.01 * TRAINING_ITERATIONS) # get 1% of trainining steps to increase LEARNING_RATE from 0 to LEARNING_RATE
+
 
     ### Data loaders ###
     trainset = dataset.LibrispeechDataset(path_to_data_root=DATASET_ROOT, include_splits=["train-clean-100"], is_from_cached = False, save_cached=False, is_augment=True)
@@ -274,7 +276,7 @@ def main():
 
     ### Optimizer ###
     optimizer = optim.AdamW(params=model.parameters(), lr=LEARNING_RATE)
-    scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=500, num_training_steps=TRAINING_ITERATIONS)
+    scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=NUM_WARMUPS_STEPS, num_training_steps=TRAINING_ITERATIONS)
 
     # model.load_state_dict(torch.load("best_weights_128-2-Wer_0.86.pt",weights_only=True)) # best_weights_512_3rnn, best_weights_128_2rnn
 

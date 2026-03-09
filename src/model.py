@@ -18,10 +18,6 @@ import re
 import shutil
 import random
 
-# %% [markdown]
-# ### DeepSpeech2: Intro to ASR 
-# ![image.png](attachment:image.png)
-
 class MaskedConvd2d(nn.Conv2d): # inherit from nn.Conv2d
     def __init__(self, 
             in_channels, 
@@ -59,7 +55,6 @@ class MaskedConvd2d(nn.Conv2d): # inherit from nn.Conv2d
     def _compute_out_seq_len(self, seq_lens): 
         return torch.floor((seq_lens + (2 * self.padding[1]) - (self.kernel_size[1] -1) -1) // self.stride[1]) + 1
 
-# %% [markdown]
 # ### Convolutional Feature Extractor 
 # 
 # Create a stack of two convolutions with BatchNorm2d and the HardTanh Activation function 
@@ -68,9 +63,7 @@ class MaskedConvd2d(nn.Conv2d): # inherit from nn.Conv2d
 # 
 # from (B, C, H, W) => (B, C, H*W) ~ (B, embedding, tokens)
 # => need to this format: (B, tokens, embedding)
-# 
 
-# %%
 class ConvolutionFeatureExtractor(nn.Module): 
     def __init__(self, in_channels = 1, out_channels = 32): # default from Nvidia implementation
         super(ConvolutionFeatureExtractor, self).__init__()
@@ -110,8 +103,7 @@ class ConvolutionFeatureExtractor(nn.Module):
         #print("\nAfter flatten: ", x.shape) 
 
         return x, seq_lens
-    
-    # %%
+
 class RNNLayer(nn.Module): 
     def __init__(self, input_size, 
                  hidden_size = 512): # what the invading implementaion used 
@@ -144,13 +136,10 @@ class RNNLayer(nn.Module):
 
         return x 
 
-
-# %% [markdown]
 # ### Put it together 
 # 
 # Put it all together to create our DeepSpeech2 model 
 
-# %%
 class DeepSpeech2(nn.Module): 
     def __init__(self, 
                 conv_in_channels = 1, 
