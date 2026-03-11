@@ -19,6 +19,9 @@ from pathlib import Path
 import src.dataset as dataset
 import warnings
 import time
+# import importlib
+
+# importlib.reload(dataset)
 
 warnings.simplefilter('ignore')
 
@@ -160,6 +163,7 @@ class RNNLayer(nn.Module):
             hidden_size=hidden_size, # no of neuron at hidden state 
             batch_first=True, 
             bidirectional=True, # when training the rnn, future steps can look in the past steps and vice versa as the entire input is passed at once
+            dropout=0.5
         )
 
         self.layernorm = nn.LayerNorm(2 * hidden_size) # need *2 as for both forward and backward direction with bidirectional=True
@@ -226,7 +230,6 @@ class DeepSpeech2(nn.Module):
 
 
 def main():
-   
 
     DATASET_ROOT = "C:/Users/HuyenDT/Downloads/LibriSpeech"
     os.listdir(DATASET_ROOT)
@@ -240,8 +243,8 @@ def main():
     
     ### Training agurments 
     BATCH_SIZE = 32
-    TRAINING_ITERATIONS = 10 # 50000 # how many iterations 
-    EVAL_ITERATIONS = 5  # 2500 # How often want to evaluate a learning reate 
+    TRAINING_ITERATIONS = 2000 # 50000 # how many iterations 
+    EVAL_ITERATIONS = TRAINING_ITERATIONS//5  # 2500 # How often want to evaluate a learning reate 
     LEARNING_RATE = 1e-4 # 10^(-4)
     NUM_WORKERS = 2 # no of CPU (if has data preload => set NUM_WORKERS = 0)
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -278,7 +281,7 @@ def main():
     optimizer = optim.AdamW(params=model.parameters(), lr=LEARNING_RATE)
     scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=NUM_WARMUPS_STEPS, num_training_steps=TRAINING_ITERATIONS)
 
-    # model.load_state_dict(torch.load("best_weights_128-2-Wer_0.86.pt",weights_only=True)) # best_weights_512_3rnn, best_weights_128_2rnn
+    model.load_state_dict(torch.load("best_weights.pt",weights_only=True)) # best_weights_512_3rnn, best_weights_128_2rnn
 
     best_val_loss = np.inf 
     train = True 
@@ -386,6 +389,8 @@ def main():
 
             if completed_steps >= TRAINING_ITERATIONS: 
                 train = False 
+                torch.save(train_his_loss, "train_his_loss.pt")
+                torch.save(validation_his_loss, "validation_his_loss.pt")
                 print("Completed!", f"Total training time: {time.time() - start_total:.2f}s")
                 break
     

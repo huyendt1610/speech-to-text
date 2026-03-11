@@ -149,6 +149,34 @@ def compute_span_mask(shape,
     sequence_masks = torch.concatenate(sequence_masks)
     return sequence_masks # which tokens to be masked, and what not
 
+def sample_negative_indices(features_shape, num_negatives, mask_time_indices):
+    batch_size, sequence_length = features_shape 
+    sequence_index = np.arange(sequence_length)
+
+    sampled_negatives = np.zeros(shape=(batch_size, sequence_length, num_negatives), dtype=np.int32)
+    
+    if mask_time_indices is None: 
+        mask_time_indices = np.ones(shape=(batch_size, sequence_length), dtype=bool)
+
+    for idx in range(batch_size): 
+        batch_span_mask = mask_time_indices[idx]
+        masked_indexes = sequence_index[batch_span_mask]
+
+        num_masked = batch_span_mask.sum() 
+        # print(num_masked)
+        feature_index = np.expand_dims(np.arange(num_masked), -1)
+        feature_index = np.repeat(feature_index, num_negatives, axis = -1)
+
+        sample_index = np.random.randint(0, num_masked - 1, size=(num_masked, num_negatives))
+        sample_index[(sample_index == feature_index)] += 1 # if the index is the correct answer => increase index to avoid that
+        sampled_negatives[idx][batch_span_mask] = masked_indexes[sample_index]
+
+        sampled_negatives[idx] += idx * sequence_length # after flattened => still get data by indexes (offset everything by 1, 2, 3... * sequence_length)
+
+        
+    sampled_negatives = torch.tensor(sampled_negatives, dtype=torch.long)
+    return sampled_negatives
+
 
 if __name__ == "__main__":
 
@@ -168,5 +196,7 @@ if __name__ == "__main__":
     sub_attention_mask = compute_sub_attention_mask(config, attention_mask)
     span_mask = compute_span_mask(shape=tuple(sub_attention_mask.shape),
                                     attention_mask=sub_attention_mask)
-
+    negatives = sample_negative_indices(features_shape=tuple(sub_attention_mask.shape),
+                                        num_negatives=5, 
+                                        mask_time_indices=span_mask)
     
