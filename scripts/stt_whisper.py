@@ -5,11 +5,11 @@ import whisper # OpenAI
 from pathlib import Path
 from jiwer import wer
 import sounddevice as sd
-from typing import Literal
+from src.utils import get_libri_file_list
+
 import warnings
 warnings.simplefilter('ignore')
 
-from src.utils import get_libri_file_list
     
 def testLibriData(file_idx, la = "en"):
     # FILE_INDEX = 0 
@@ -68,11 +68,11 @@ if __name__ == "__main__":
             audio = record_audio(duration=5)
             text = speech_to_text(audio, language)
         elif rs == 3:
-            l = input("-- Choose a language: en, fi, vi...: ")
-            if not l in valid_languages:
+            selected_language = input("-- Choose a language: en, fi, vi...: ")
+            if selected_language not in valid_languages:
                 print("Invalid input, please enter again")
                 continue
-            language = l
+            language = selected_language
         elif rs == 4:
             c = False
         else:

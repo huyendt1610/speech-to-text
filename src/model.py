@@ -1,22 +1,8 @@
-# pip install torch torchaudio torchcodec 
 # pip install transformers jiwer ipywidgets
-import os 
-import numpy as np 
-import matplotlib.pyplot as plt 
-from tqdm import tqdm # for displaying process bar
 import torch 
 import torch.nn as nn 
-from torch import optim
-from torch.utils.data import Dataset, DataLoader
-import torchaudio
-import torchaudio.transforms as T 
-import torchaudio.functional as F 
-from transformers import Wav2Vec2CTCTokenizer, get_cosine_schedule_with_warmup 
-from jiwer import wer # to evaluate the model 
-from pathlib import Path
-import re
-import shutil
-import random
+from transformers import Wav2Vec2CTCTokenizer 
+
 
 class MaskedConvd2d(nn.Conv2d): # inherit from nn.Conv2d
     def __init__(self, 
@@ -63,7 +49,7 @@ class MaskedConvd2d(nn.Conv2d): # inherit from nn.Conv2d
 # 
 # from (B, C, H, W) => (B, C, H*W) ~ (B, embedding, tokens)
 # => need to this format: (B, tokens, embedding)
-
+# 
 class ConvolutionFeatureExtractor(nn.Module): 
     def __init__(self, in_channels = 1, out_channels = 32): # default from Nvidia implementation
         super(ConvolutionFeatureExtractor, self).__init__()
@@ -103,7 +89,7 @@ class ConvolutionFeatureExtractor(nn.Module):
         #print("\nAfter flatten: ", x.shape) 
 
         return x, seq_lens
-
+    
 class RNNLayer(nn.Module): 
     def __init__(self, input_size, 
                  hidden_size = 512): # what the invading implementaion used 
@@ -117,6 +103,7 @@ class RNNLayer(nn.Module):
             hidden_size=hidden_size, # no of neuron at hidden state 
             batch_first=True, 
             bidirectional=True, # when training the rnn, future steps can look in the past steps and vice versa as the entire input is passed at once
+            dropout=0.5
         )
 
         self.layernorm = nn.LayerNorm(2 * hidden_size) # need *2 as for both forward and backward direction with bidirectional=True
@@ -145,7 +132,8 @@ class DeepSpeech2(nn.Module):
                 conv_in_channels = 1, 
                 conv_out_channels = 32, 
                 rnn_hidden_size = 512, # reduce model size
-                rnn_depth = 5 # reduce model size
+                rnn_depth = 5, # reduce model size
+                tokenizer = None
                 ):
         
         super().__init__()
@@ -162,6 +150,10 @@ class DeepSpeech2(nn.Module):
                 for i in range(rnn_depth)
             ]
         )
+
+        if tokenizer is None: 
+            tokenizer = Wav2Vec2CTCTokenizer.from_pretrained("facebook/wav2vec2-base")
+
 
         self.head = nn.Sequential( # output: probabilities for each vocab
             nn.Linear(2 * rnn_hidden_size, rnn_hidden_size), # input, output

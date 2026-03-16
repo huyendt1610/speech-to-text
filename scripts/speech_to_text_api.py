@@ -3,7 +3,6 @@
 # //pip install pyaudio
 
 import speech_recognition as sr 
-import pyttsx3 # pip 
 from pydub import AudioSegment # pip install pydub
 from pydub.utils import make_chunks
 import os 
@@ -58,8 +57,7 @@ def decode_whole_file(path, chunk_length_ms=30_000, language="en-US", temp_folde
     # Chunk size (ms), ví dụ 30 giây = 30*1000 ms
     #chunk_length_ms = 30 * 1000
     chunks = make_chunks(audio, chunk_length_ms)
-
-    r = sr.Recognizer()
+    
     full_text = ""
     
     print(temp_folder)

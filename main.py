@@ -1,32 +1,76 @@
-import speech_recognition 
-import pyttsx3 
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+import io 
+import torch
+import torchaudio
+import logging
+import uuid
+import numpy as np
 
-recognizer = speech_recognition.Recognizer() 
 
-while True: 
-    try: 
-        with speech_recognition.Microphone() as mic: 
+app = FastAPI() 
+logger = logging.getLogger(__name__)
+processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-base-960h") # wav2vec2-large/base-960h
+model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-base-960h")
 
-            # adjust_for_ambient_noise = "tự động cân bằng ngưỡng nhận dạng giọng nói để bỏ qua tiếng ồn nền"
-            # 1. listen to measure the noise 
-            # 2. set energy_threshold: the threshold that mic consider that is "the voice"
-            recognizer.adjust_for_ambient_noise(mic, duration = 0.2)
-            print(recognizer.energy_threshold)
+MODEL_PATH = "./models/wav2vec2"
 
-            print('Listening....')
+# model.save_pretrained(MODEL_PATH)
+# processor.save_pretrained(MODEL_PATH)
+# processor = Wav2Vec2Processor.from_pretrained(MODEL_PATH) # wav2vec2-base-960h
+# model = Wav2Vec2ForCTC.from_pretrained(MODEL_PATH)
 
-            # When users stop talking => 
-            audio = recognizer.listen(mic) 
+# Cho phép domain frontend truy cập
+origins = [
+    "http://localhost:3000",  # domain frontend của bạn
+    "https://my-frontend.com",  # nếu có deploy
+]
 
-            # Dùng API của Google Speech Recognition để phân tích âm thanh trong audio.
-            text = recognizer.recognize_google(audio) # Ctrl+Shift+P -> de cho kieu kernel, intepreter
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"] ,  # hoặc ["*"] để cho tất cả
+    allow_credentials=False,
+    allow_methods=["*"],     # GET, POST, PUT, DELETE…
+    allow_headers=["*"],     # header tuỳ ý
+)
 
-            text = text.lower() 
+@app.get("/")
+def root():
+    return "Hello, I am alive"
 
-            print(f"Result: {text}")
-    except speech_recognition.UnknownValueError: 
-        recognizer = speech_recognition.Recognizer() 
-        continue
-    except speech_recognition.RequestError:
-        print("Erro when connecting to API")
- 
+@app.post("/predict")
+async def predict(file: UploadFile):
+    try:
+
+        audio_bytes = await file.read()
+        if len(audio_bytes) == 0:
+            raise ValueError("Empty audio file")
+        # return {"filename": file.filename, "size": len(audio_bytes)}
+        waveform, sr = torchaudio.load(io.BytesIO(audio_bytes), normalize=True)
+        waveform = waveform.flatten()
+
+        duration = np.floor(len(waveform) / sr)
+
+        inputs = processor(waveform, sampling_rate=sr, return_tensors="pt", padding=True)
+        with torch.no_grad():
+            logits = model(**inputs).logits # ** from dictionary to keyword arguments, in case too many args => no need to pass one-by-one
+        predicted_ids = torch.argmax(logits, dim=-1)
+        transcription = processor.batch_decode(predicted_ids)
+
+        return {
+            "transcript": transcription[0],
+            "filename": file.filename,
+            "duration": duration
+        }
+    except ValueError as e:
+        logger.warning(f"Invalid input: {e}")
+        raise HTTPException(status_code=422, detail=str(e))
+
+    except Exception as e:
+        logger.exception("Model inference failed")
+        raise HTTPException(status_code=500, detail="Model inference error")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

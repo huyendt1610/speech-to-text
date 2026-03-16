@@ -2,27 +2,16 @@
 # pip install transformers jiwer ipywidgets
 import os 
 import numpy as np 
-import matplotlib.pyplot as plt 
-from tqdm import tqdm # for displaying process bar
 import torch 
-import torch.nn as nn 
-from torch import optim
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 import torchaudio
 import torchaudio.transforms as T 
-import torchaudio.functional as F 
-from transformers import Wav2Vec2CTCTokenizer, get_cosine_schedule_with_warmup 
-from jiwer import wer # to evaluate the model 
-from pathlib import Path
+from transformers import Wav2Vec2CTCTokenizer 
 import re
 import shutil
 import random
 
-
 tokenizer = Wav2Vec2CTCTokenizer.from_pretrained("facebook/wav2vec2-base")
-tokenizer # tokenizer nào cũng na ná nhau thôi, dùng cái này có sẵn đã có decoder trong đó rồi 
-
-SAVE_BATCH = 2000
 
 class LibrispeechDataset(Dataset):
 
@@ -34,8 +23,7 @@ class LibrispeechDataset(Dataset):
                  num_audio_channels = 1,
                  is_from_cached=False,
                  cached_path = "dataset_cache",
-                 cache_version = 0,
-                 save_cached = False): 
+                 cache_version = 0): 
 
         self.sampling_rate = sampling_rate 
         self.num_audio_channels = num_audio_channels
@@ -44,7 +32,8 @@ class LibrispeechDataset(Dataset):
         # preload data 
         self.data = []
 
-        if (is_from_cached and cache_version > 0 and os.path.exists(os.path.join(cached_path, str(cache_version)))): # Load from cache 
+        # Load from cache 
+        if (is_from_cached and cache_version > 0 and os.path.exists(os.path.join(cached_path, str(cache_version)))): 
             print("Loading cached dataset...")
             folder_path = os.path.join(cached_path, str(cache_version))
             # self.data = [torch.load(os.path.join(folder_path, f)) for f in os.listdir(folder_path)]
@@ -57,9 +46,6 @@ class LibrispeechDataset(Dataset):
             self.librispeech_data = torch.load(os.path.join(folder_path, "speech.pt"))
 
         else: 
-            self.build_data_from_files(path_to_data_root, include_splits, cached_path, cache_version, save_cached)
-
-    def build_data_from_files(self, path_to_data_root, include_splits, cached_path, cache_version, save_cached): 
             # Load from folders 
             if isinstance(include_splits, str): # if it is a string 
                 include_splits = [include_splits] # to make sure include_splits is a list, even if it is a string => 1 item
@@ -91,7 +77,6 @@ class LibrispeechDataset(Dataset):
                                 (full_path_to_audio_file, transcript)
                             )
 
-
             # print(len(self.librispeech_data))
             # Create a transform to transfrom the audio waveform → Mel Spectrogram: display Frequency by time (Time × Frequency)
             # Waveform (1D signal) => STFT (Fourier Transform) -> Mel scaling -> Mel Spectrogram (2D tensor)
@@ -101,6 +86,7 @@ class LibrispeechDataset(Dataset):
                 sample_rate = self.sampling_rate, # tấn suất lấy mẫu của audio: esim: 16000 Hz = 1 giây có 16000 mẫu
                 n_mels=80 # Mel filter banks: (optimal value) Output sẽ có 80 hàng (80 tần số mel), => chia trục tần số thành 80 dải Mel.
                         # 40: lost data, 128-256: heavy, more RAM, and training time,
+                        # range map from Hz to Mel 
             )
 
             self.amp2db = T.AmplitudeToDB( # covert from linear-scale mel spectrogram to log-mel
@@ -109,61 +95,7 @@ class LibrispeechDataset(Dataset):
 
             self.audio_aug = AudioAugment()
             self.spec_aug  = SpecAugment()
-
-            if (save_cached): ## if need to save to cache data
-                # check cached version 
-                max_version = self.get_max_cached_version(cached_path, cache_version)
-                path_to_cache_version = os.path.join(cached_path, str(max_version))
-                if os.path.exists(path_to_cache_version):
-                    shutil.rmtree(path_to_cache_version)
-                os.makedirs(path_to_cache_version, exist_ok=True)
-
-                #print(max_version)
-                buffer = []
-                file_id = 0
-                for path, tran in self.librispeech_data: 
-                    #print(i, path, tran)
-                    audio, orig_sr = torchaudio.load(path, normalize=True)
-                    if orig_sr != self.sampling_rate:
-                        audio = torchaudio.functional.resample(audio, orig_freq=orig_sr, new_freq=self.sampling_rate) # re-sample to 16.000
-
-                    mel = self.audio2mels(audio) # to MelSpectrogram
-                    mel = self.amp2db(mel) 
-                    mel = (mel - mel.mean())/(mel.std() + 1e-6) # 1e-6 to avoid deviding by zero, to nomalize
-
-                    tokenized_transcript = torch.tensor(tokenizer.encode(tran))
-                    item = {
-                            "input_values": mel[0].T, # to feed time dimension first, then feature dimension after
-                            "labels": tokenized_transcript
-                        }
-                    self.data.append(item)
-                    buffer.append(item)
-
-                    if len(buffer) == SAVE_BATCH:
-                            # save to cache
-                            path_to_save = os.path.join(path_to_cache_version, f"data_{file_id}.pt") # audioname.pt
-                            torch.save(buffer,path_to_save)
-
-                            # torch.save(buffer, f"data_{file_id}.pt")
-                            buffer = []
-                            file_id += 1
-                            
-                # save remaining parts
-                if buffer:
-                    path_to_save = os.path.join(path_to_cache_version, f"data_{file_id}.pt") # audioname.pt
-
-                    torch.save(buffer,path_to_save)
-                
-                # save self.librispeech_data 
-                path_to_save = os.path.join(path_to_cache_version, f"speech.pt") 
-                torch.save(self.librispeech_data, path_to_save)
-
-    def get_max_cached_version(self, cached_path, cache_version): 
-        if(cache_version > 0): 
-            return cache_version
-        else: 
-            return np.max([int(i) for i in os.listdir(cached_path)]) 
-    
+            
     def __len__(self): 
         '''
             - DataLoader khow how many samples dataset has
@@ -212,7 +144,43 @@ class LibrispeechDataset(Dataset):
         return sample
 
         # return self.data[index]
-       
+
+def collate_fun(batch): # combine multiple samples into batchs
+    #print(batch[0]["input_values"].shape)  # time steps of each audio is 853
+    #print(batch[1]["input_values"].shape)  # each has diff length 
+
+    batch = sorted(batch, key = lambda x: x["input_values"].shape[0], reverse=True)
+    # print(batch[0]["input_values"].shape)  # after sort 
+    # print(batch[1]["input_values"].shape) 
+    
+
+    batch_mels = [sample["input_values"] for sample in batch]
+    batch_transcripts = [sample["labels"] for sample in batch]
+
+    seq_lens = torch.tensor([b.shape[0] for b in batch_mels], dtype=torch.long)
+
+    spectrograms = torch.nn.utils.rnn.pad_sequence(batch_mels, batch_first=True, padding_value=0)
+    # print(spectrograms.shape) # [5, 853, 80]: batch_size, seq length, hidden size 
+    
+    spectrograms = spectrograms.unsqueeze(1) # add 1 more dimension after the first dimension, unsqueeze(0): at the beginning, unsqueeze(-1): at the end 
+    # print(spectrograms.shape) # [5, 1, 853, 80]
+
+    spectrograms = spectrograms.transpose(-1, -2) # switch the position of 2 last dimensions
+
+    target_lengths = torch.tensor([len(t) for t in batch_transcripts], dtype=torch.long)
+    packed_transcripts = torch.cat(batch_transcripts)
+
+    # print(target_lengths)
+    # print(packed_transcripts)
+    batch = {
+        "input_values": spectrograms,
+        "seq_lens": seq_lens, 
+        "labels": packed_transcripts, 
+        "target_lengths": target_lengths
+    }
+
+    return batch
+  
 class SpecAugment:
     def __init__(self):
         self.freq_mask = T.FrequencyMasking(15)

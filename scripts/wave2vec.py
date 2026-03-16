@@ -1,7 +1,9 @@
 import torch
-import numpy as np
+import torchaudio
 import sounddevice as sd
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
+from src.utils import get_libri_file_list
+import io 
 
 # Load mô hình Wav2Vec2 (pre-trained cho tiếng Anh)
 processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-large-960h")
@@ -25,6 +27,16 @@ def speech_to_text(audio):
 
 if __name__ == "__main__":
     # Ghi âm 5 giây và chuyển sang text
-    audio = record_audio(duration=5)
-    text = speech_to_text(audio)
+    # audio = record_audio(duration=5)
+    # text = speech_to_text(audio)
+    # print("Transcription:", text)
+
+    filelist = get_libri_file_list()
+    file_idx = 0 
+
+    audio_path, org_transcript = filelist[file_idx] 
+    # print(audio_path)
+    # print(org_transcript)
+    audio, sr = torchaudio.load(audio_path, normalize=True)
+    text = speech_to_text(audio.flatten())
     print("Transcription:", text)

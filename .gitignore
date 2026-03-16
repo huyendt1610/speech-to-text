@@ -8,3 +8,5 @@ saved_models/
 *.bin
 *.ckpt
 images/
+node_modules/
+.env
