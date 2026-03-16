@@ -9,8 +9,8 @@ import React from "react";
 import Card from "@material-ui/core/Card";
 import CardContent from "@material-ui/core/CardContent";
 import { Paper, CardActionArea, CardMedia, Box, Grid, TableContainer, Table, TableBody, TableHead, TableRow, TableCell, Button, CircularProgress } from "@material-ui/core";
-import cblogo from "./microphone.png";
-import image from "./bg.png";
+import cblogo from "./src-images/microphone.png";
+import image from "./src-images/b.jpg"; //
 import { DropzoneArea } from 'material-ui-dropzone';
 import { common } from '@material-ui/core/colors';
 import Clear from '@material-ui/icons/Clear';
@@ -133,9 +133,11 @@ const useStyles = makeStyles((theme) => ({
     justifyContent: 'center',
     flexDirection: 'column',
     alignItems: 'center',
+    borderRadius: "15px",
   },
   appbar: {
-    background: '#be6a77',
+    background: '#8675c4',
+    //backgroundImage:`url(./3409402.jpg)`,
     boxShadow: 'none',
     color: 'white'
   },
@@ -150,7 +152,7 @@ export const ImageUpload = () => {
   const [data, setData] = useState();
   const [audiofile, setImage] = useState(false);
   const [isLoading, setIsloading] = useState(false);
-  const [transcript, setTranscript] = useState()
+  // const [transcript, setTranscript] = useState()
 
   let confidence = 0;
 
@@ -158,7 +160,7 @@ export const ImageUpload = () => {
     if (audiofile) {
       let formData = new FormData();
       formData.append("file", selectedFile);
-      console.log(formData)
+      //console.log(formData)
       let res = await axios({ // axe i os: make an http request to call backend 
         method: "post",
         url: process.env.REACT_APP_API_URL,
@@ -166,7 +168,7 @@ export const ImageUpload = () => {
       });
       if (res.status === 200) {
         setData(res.data);
-        setTranscript(res.data.transcript);
+        //setTranscript(res.data.transcript);
       }
       setIsloading(false);
     }
@@ -208,9 +210,9 @@ export const ImageUpload = () => {
     setImage(true);
   };
 
-  if (data) {
-    confidence = (parseFloat(data.confidence) * 100).toFixed(2);
-  }
+  // if (data) {
+  //   confidence = (parseFloat(data.confidence) * 100).toFixed(2);
+  // }
 
   return (
     <React.Fragment>
