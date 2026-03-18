@@ -1,5 +1,4 @@
-import { useState, useEffect } from "react";
-import { makeStyles, withStyles } from "@material-ui/core/styles";
+import { useState, useEffect, useRef } from "react"; 
 import AppBar from "@material-ui/core/AppBar";
 import Toolbar from "@material-ui/core/Toolbar";
 import Typography from "@material-ui/core/Typography";
@@ -8,177 +7,84 @@ import Container from "@material-ui/core/Container";
 import React from "react";
 import Card from "@material-ui/core/Card";
 import CardContent from "@material-ui/core/CardContent";
-import { Paper, CardActionArea, CardMedia, Box, Grid, TableContainer, Table, TableBody, TableHead, TableRow, TableCell, Button, CircularProgress } from "@material-ui/core";
-import cblogo from "./src-images/microphone.png";
-import image from "./src-images/b.jpg"; //
+import { Paper, Switch, FormControlLabel, TextField, Box, Grid, TableContainer, 
+  Table, TableBody, TableHead, TableRow, TableCell, CircularProgress, Select, MenuItem,InputLabel, FormControl } from "@material-ui/core";
+import recordingLogo from "./src-images/music.png";
+import stopRecordLogo from "./src-images/microphone.png";
+
 import { DropzoneArea } from 'material-ui-dropzone';
-import { common } from '@material-ui/core/colors';
 import Clear from '@material-ui/icons/Clear';
+import GetAppIcon from '@material-ui/icons/GetApp';
 
+import useStyles from "./styles";
+import ColorButton from "./ColorButton";
 
-
-
-const ColorButton = withStyles((theme) => ({
-  root: {
-    color: theme.palette.getContrastText(common.white),
-    backgroundColor: common.white,
-    '&:hover': {
-      backgroundColor: '#ffffff7a',
-    },
-  },
-}))(Button);
 const axios = require("axios").default;
+const controller = new AbortController();
 
-const useStyles = makeStyles((theme) => ({
-  grow: {
-    flexGrow: 1,
-  },
-  clearButton: {
-    width: "-webkit-fill-available",
-    borderRadius: "15px",
-    padding: "15px 22px",
-    color: "#000000a6",
-    fontSize: "20px",
-    fontWeight: 900,
-  },
-  root: {
-    maxWidth: 345,
-    flexGrow: 1,
-  },
-  media: {
-    height: 400,
-  },
-  paper: {
-    padding: theme.spacing(2),
-    margin: 'auto',
-    maxWidth: 500,
-  },
-  gridContainer: {
-    justifyContent: "center",
-    padding: "4em 1em 0 1em",
-  },
-  mainContainer: {
-    backgroundImage: `url(${image})`,
-    backgroundRepeat: 'no-repeat',
-    backgroundPosition: 'center',
-    backgroundSize: 'cover',
-    height: "93vh",
-    marginTop: "8px",
-  },
-  imageCard: {
-    margin: "auto",
-    maxWidth: 400,
-    height: 450,
-    backgroundColor: 'transparent',
-    boxShadow: '0px 9px 70px 0px rgb(0 0 0 / 30%) !important',
-    borderRadius: '15px',
-  },
-  imageCardEmpty: {
-    height: 'auto',
-  },
-  noImage: {
-    margin: "auto",
-    width: 400,
-    height: "400 !important",
-  },
-  input: {
-    display: 'none',
-  },
-  uploadIcon: {
-    background: 'white',
-  },
-  tableContainer: {
-    backgroundColor: 'transparent !important',
-    boxShadow: 'none !important',
-  },
-  table: {
-    backgroundColor: 'transparent !important',
-  },
-  tableHead: {
-    backgroundColor: 'transparent !important',
-  },
-  tableRow: {
-    backgroundColor: 'transparent !important',
-  },
-  tableCell: {
-    fontSize: '22px',
-    backgroundColor: 'transparent !important',
-    borderColor: 'transparent !important',
-    color: '#000000a6 !important',
-    fontWeight: 'bolder',
-    padding: '1px 24px 1px 16px',
-  },
-  tableCell1: {
-    fontSize: '14px',
-    backgroundColor: 'transparent !important',
-    borderColor: 'transparent !important',
-    color: '#000000a6 !important',
-    fontWeight: 'bolder',
-    padding: '1px 24px 1px 16px',
-  },
-  tableBody: {
-    backgroundColor: 'transparent !important',
-  },
-  text: {
-    color: 'white !important',
-    textAlign: 'center',
-  },
-  buttonGrid: {
-    maxWidth: "416px",
-    width: "100%",
-  },
-  detail: {
-    backgroundColor: 'white',
-    display: 'flex',
-    justifyContent: 'center',
-    flexDirection: 'column',
-    alignItems: 'center',
-    borderRadius: "15px",
-  },
-  appbar: {
-    background: '#8675c4',
-    //backgroundImage:`url(./3409402.jpg)`,
-    boxShadow: 'none',
-    color: 'white'
-  },
-  loader: {
-    color: '#be6a77 !important',
-  }
-}));
+
 export const ImageUpload = () => {
   const classes = useStyles();
   const [selectedFile, setSelectedFile] = useState();
   const [preview, setPreview] = useState();
   const [data, setData] = useState();
-  const [audiofile, setImage] = useState(false);
+  const [audioFile, setAudioFile] = useState(false);
   const [isLoading, setIsloading] = useState(false);
-  // const [transcript, setTranscript] = useState()
+  const [checkedDeepSpeech2, setCheckedDeepSpeech2] = useState(false);
 
-  let confidence = 0;
+  //recording 
+  const [recording, setRecording] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const chunksRef = useRef([]);
+  const controllerRef = useRef(null);
+
+  const [language, setLanguage] = useState("en");
+
+
+  let wer = 0;
 
   const sendFile = async () => {
-    if (audiofile) {
-      let formData = new FormData();
-      formData.append("file", selectedFile);
-      //console.log(formData)
-      let res = await axios({ // axe i os: make an http request to call backend 
-        method: "post",
-        url: process.env.REACT_APP_API_URL,
-        data: formData
-      });
-      if (res.status === 200) {
-        setData(res.data);
-        //setTranscript(res.data.transcript);
+    controllerRef.current = new AbortController();
+    try {
+      if (audioFile) {
+        //import.meta.env.
+        let url = checkedDeepSpeech2 ? process.env.REACT_APP_API_URL_DEEPSPEECH2 : process.env.REACT_APP_API_URL; 
+        let formData = new FormData();
+        formData.append("file", selectedFile);
+        formData.append("la", language);
+        let res = await axios({ // axe i os: make an http request to call backend 
+          method: "post",
+          url:url,
+          data: formData,
+          signal: controller.signal,
+        });
+        if (res.status === 200) {
+          setData(res.data);
+        }
+        setIsloading(false);
       }
+    } catch (err) {
+      if (err.name === "CanceledError") {
+        console.log("Upload canceled!");
+      } else {
+        console.error("Error:", err);
+      }
+    } finally {
       setIsloading(false);
     }
   }
 
+  const cancelUpload = () => {
+    if (controllerRef.current) controllerRef.current.abort();
+    clearData(false)
+  };
+
   const clearData = () => {
     setData(null);
-    setImage(false);
+    setAudioFile(false);
     setSelectedFile(null);
     setPreview(null);
+    setIsloading(false)
   };
 
   useEffect(() => {
@@ -201,28 +107,104 @@ export const ImageUpload = () => {
   const onSelectFile = (files) => {
     if (!files || files.length === 0) {
       setSelectedFile(undefined);
-      setImage(false);
+      setAudioFile(false);
       setData(undefined);
       return;
     }
     setSelectedFile(files[0]);
     setData(undefined);
-    setImage(true);
+    setAudioFile(true);
   };
 
   // if (data) {
-  //   confidence = (parseFloat(data.confidence) * 100).toFixed(2);
+  //   wer = (parseFloat(data.confidence) * 100).toFixed(2);
   // }
+
+  const handleChangeModel = (event) => {
+    setCheckedDeepSpeech2(event.target.checked);
+  };
+
+  const startRecording = async () => {
+    clearData()
+    setAudioFile(true);
+    setIsloading(true);
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorderRef.current = new MediaRecorder(stream);
+
+    chunksRef.current = [];
+    mediaRecorderRef.current.ondataavailable = e => {
+      if (e.data.size > 0) chunksRef.current.push(e.data);
+    };
+
+    mediaRecorderRef.current.onstop = () => {
+      const blob = new Blob(chunksRef.current, { type: "audio/webm" });
+      //const url = URL.createObjectURL(blob);
+      // setPreview(url);
+      setData(undefined);
+      setSelectedFile(blob);
+      setAudioFile(true);
+    };
+
+    mediaRecorderRef.current.start();
+    setRecording(true);
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current.stop();
+    setRecording(false);
+  };
+
+  const handleDownload = () => {
+    if(data){
+      // Tạo blob từ nội dung text
+      const blob = new Blob([data.transcript], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+
+      // Tạo thẻ <a> tạm và click
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = 'transcript.txt';
+      link.click();
+
+      // Giải phóng memory
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  const handleSelectLanguage = (event) => {
+      setLanguage(event.target.value)
+  }
 
   return (
     <React.Fragment>
       <AppBar position="static" className={classes.appbar}>
         <Toolbar>
           <Typography className={classes.title} variant="h6" noWrap>
-            ASR: Automatic Speech Recognition
+            STT: Speech-To-Text
           </Typography>
           <div className={classes.grow} />
-          <Avatar src={cblogo}></Avatar>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={checkedDeepSpeech2}
+                onChange={handleChangeModel} //change model 
+              />
+            }
+            label="DeepSpeech2"
+          />
+          <FormControl style={{ width: 150 }}>
+            <Select className={classes.selectWhite} value={language}
+                  onChange={handleSelectLanguage}>
+              <MenuItem value="en">English</MenuItem>
+              <MenuItem value="fi">Finnish</MenuItem>
+            </Select>
+          </FormControl>
+          
+          <Avatar src={ recording? recordingLogo: stopRecordLogo}         
+            style={{cursor: "pointer" }} //record 
+            onClick={recording ? stopRecording : startRecording}> 
+          </Avatar>
         </Toolbar>
       </AppBar>
       <Container maxWidth={false} className={classes.mainContainer} disableGutters={true}>
@@ -235,8 +217,8 @@ export const ImageUpload = () => {
           spacing={2}
         >
           <Grid item xs={12}>
-            <Card className={`${classes.imageCard} ${!audiofile ? classes.imageCardEmpty : ''}`}>
-              {audiofile && 
+            <Card className={`${classes.imageCard} ${!audioFile ? classes.imageCardEmpty : ''}`}>
+              {audioFile && 
               // <CardActionArea>
               //   <CardMedia
               //     className={classes.media}
@@ -247,7 +229,7 @@ export const ImageUpload = () => {
               // </CardActionArea>
               <audio controls src={preview} style={{ width: "100%" }} />
               }
-              {!audiofile && <CardContent className={classes.content}>
+              {!audioFile && <CardContent className={classes.content}>
                 <DropzoneArea
                   // acceptedFiles={['image/*']}
                   acceptedFiles={['.mp3', '.wav', '.ogg', '.aac', '.flac']}
@@ -256,8 +238,6 @@ export const ImageUpload = () => {
                 />
               </CardContent>}
               {data && <CardContent className={classes.detail}>
-               
-
                 <TableContainer component={Paper} className={classes.tableContainer}>
                   <Table className={classes.table} size="small" aria-label="simple table">
                     <TableHead className={classes.tableHead}>
@@ -271,8 +251,8 @@ export const ImageUpload = () => {
                         <TableCell scope="row" className={classes.tableCell} style={{ height: 280 }}>
                           <Typography variant="h6">
                            <Box
-                              sx={{
-                                maxHeight: 200,
+                              style={{
+                                maxHeight: 220,
                                 overflow: "auto",
                                 border: "1px solid #ccc",
                                 padding: 2
@@ -283,6 +263,10 @@ export const ImageUpload = () => {
                               </Typography>
                             </Box>
                           </Typography>
+                          
+                          <ColorButton variant="contained" color="primary" onClick={handleDownload} startIcon={<GetAppIcon />}>
+                            Download
+                          </ColorButton>           
                         </TableCell>
                       </TableRow>
                       <TableRow className={classes.tableRow}>
@@ -295,26 +279,48 @@ export const ImageUpload = () => {
                          Duration: {data.duration} sec 
                         </TableCell>
                       </TableRow>
+                       <TableRow className={classes.tableRow}>
+                        <TableCell scope="row" className={classes.tableCell1}>
+                                       
+                        </TableCell>
+                      </TableRow>
+                      
                     </TableBody>
                   </Table>
                 </TableContainer>
               </CardContent>}
-              {isLoading && <CardContent className={classes.detail}>
+              {isLoading && 
+              <CardContent className={classes.detail}>
                 <CircularProgress color="secondary" className={classes.loader} />
                 <Typography className={classes.title} variant="h6" noWrap>
-                  Processing
+                  { recording ? "Recording" : "Processing"}
                 </Typography>
               </CardContent>}
             </Card>
           </Grid>
-          {data &&
+          {(data || selectedFile)  &&
             <Grid item className={classes.buttonGrid} >
-
-              <ColorButton variant="contained" className={classes.clearButton} color="primary" component="span" size="large" onClick={clearData} startIcon={<Clear fontSize="large" />}>
+              <ColorButton variant="contained" className={classes.clearButton} color="primary" component="span" size="medium" onClick={clearData} startIcon={<Clear fontSize="large" />}>
                 Clear
               </ColorButton>
-            </Grid>}
+            </Grid>
+          }
+          {/* {isLoading &&
+            <Grid item className={classes.buttonGrid} >
+              <ColorButton variant="contained" className={classes.clearButton} color="primary" component="span" size="large" onClick={cancelUpload} startIcon={<Clear fontSize="large" />}>
+                Cancel
+              </ColorButton>
+            </Grid>
+          } */}
+          {recording &&
+            <Grid item className={classes.buttonGrid} >
+              <ColorButton variant="contained" className={classes.clearButton} color="primary" component="span" size="large" onClick={stopRecording} startIcon={<Clear fontSize="large" />}>
+                Stop
+              </ColorButton>
+            </Grid>
+          }
         </Grid >
+
       </Container >
     </React.Fragment >
   );
