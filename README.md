@@ -17,14 +17,14 @@ Short description about your project, e.g.: “React app for audio recording, pr
 
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/project-name.git
-cd project-name
+git clone https://github.com/huyendt1610/speech-to-text.git
+cd sttproject/frontend
 
 # Install dependencies
-npm install
+npm install 
 
 # Run
-npm start
+npm run start
 
 ```
 ## Credits / Acknowledgements
