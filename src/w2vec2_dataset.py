@@ -133,7 +133,7 @@ def W2Vec2CollateFunctionForPreTraining(config: W2Vec2Config): ## func in func t
     return collate_fn
 
 if __name__ == "__main__":
-    path_to_data = "C:/Users/HuyenDT/Downloads/LibriSpeech"
+    path_to_data = "../data/LibriSpeech"
     dataset = W2Vec2LibriDataset(path_to_data, return_transcripts=False)
     config = W2Vec2Config()
 

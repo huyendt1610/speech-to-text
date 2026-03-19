@@ -8,7 +8,7 @@ from transformers import Wav2Vec2CTCTokenizer
 import torchaudio.transforms as T 
 
 
-def get_libri_file_list(path_to_data_root = "C:/Users/HuyenDT/Downloads/LibriSpeech", 
+def get_libri_file_list(path_to_data_root = "../data/LibriSpeech", 
                         include_splits = ["dev-clean"]):
     librispeech_data = []
     for s in include_splits: 
@@ -39,7 +39,7 @@ def get_libri_file_list(path_to_data_root = "C:/Users/HuyenDT/Downloads/LibriSpe
     
     return librispeech_data
 
-def calculate_audio_durations(path_to_data_root = "C:/Users/HuyenDT/Downloads/LibriSpeech", 
+def calculate_audio_durations(path_to_data_root = "../data/LibriSpeech", 
                         include_splits = ["dev-clean"]):
     
     if include_splits == "": 
@@ -87,7 +87,7 @@ def get_max_cached_version(cached_path, cache_version):
     else: 
         return np.max([int(i) for i in os.listdir(cached_path)]) 
     
-def build_cache(path_to_data_root = "C:/Users/HuyenDT/Downloads/LibriSpeech", 
+def build_cache(path_to_data_root = "../data/LibriSpeech", 
                 include_splits = ["dev-clean"], 
                 sampling_rate = 1600,
                 cached_path = "dataset_cache", 

@@ -1,15 +1,16 @@
 # Project Name
 
-Short description about your project, e.g.: “React app for audio recording, preview, and dynamic avatar.”
+This project is a Speech Recognition System powered by Wav2Vec2 and built with FastAPI (Backend) and React (Frontend).
+
+It provides an end-to-end solution for audio transcription, allowing users to upload audio files through a web interface and receive real-time predictions from a deep learning model. The backend handles model inference and API requests, while the frontend delivers a user-friendly experience for interaction and visualization.
 
 ---
 
 ## Features
 
-- Audio recording and preview  
-- Dynamic avatar update  
-- Upload / download files  
-- Built with Material-UI and React Hooks  
+- Speech Recognition Web App (FastAPI + React)
+- Audio Recognition System using Wav2Vec2, FastAPI, and React
+- Features include audio file upload, language selection, and efficient model inference for accurate speech-to-text conversion.
 
 ---
 
@@ -31,8 +32,8 @@ npm run start
 
 - **Tutorial Inspiration:**  
   Project structure and logic inspired by 
-  - [Priyam Mazumdar](https://www.youtube.com/watch?v=TMjKUHSFRbw&list=PL16vydMdqFg9dVvwxL8jZ4Oox_F-CPA6Z) YouTube tutorial  
-  - [CodeBasics](https://www.youtube.com/watch?v=mSf0j8qkkFI&list=PLeo1K3hjS3uu7CxAacxVndI4bE_o3BDtO&index=63)
+  - Priyam Mazumdar YouTube tutorial  
+  - CodeBasics YouTube tutorial  
 
 - **Icons / Images:**  
   - Icons by Indygo, FauzIDEA from [Flaticon](https://www.flaticon.com) 

@@ -24,15 +24,15 @@ warnings.simplefilter('ignore')
 
 def main():
 
-    DATASET_ROOT = "C:/Users/HuyenDT/Downloads/LibriSpeech"
-    os.listdir(DATASET_ROOT)
-
     # file hiện tại
     CURRENT_FILE = Path.cwd().resolve()  #Path(__file__).resolve()
     # project root
     PROJECT_ROOT = CURRENT_FILE.parents[0]
     DATA_DIR = PROJECT_ROOT / "data"
     DATASET_CACHE = DATA_DIR / "dataset_cache"
+
+    DATASET_ROOT = "../data/LibriSpeech"
+    os.listdir(DATASET_ROOT)
     
     ### Training agurments 
     BATCH_SIZE = 32

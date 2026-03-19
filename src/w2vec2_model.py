@@ -387,7 +387,7 @@ if __name__ == "__main__":
     from .dataset import W2Vec2LibriDataset, W2Vec2CollateFunctionForPreTraining
     from torch.utils.data import DataLoader 
 
-    path_to_data_root = "C:/Users/HuyenDT/Downloads/LibriSpeech"
+    path_to_data_root = "../data/LibriSpeech"
 
     w2v2_config = W2Vec2Config(num_transformer_layers=2)
     # model = W2Vec2Model(config=w2v2_config)
