@@ -50,11 +50,11 @@ def inference(path_to_audio, model, tokenizer, sampling_rate = 16000, device="cp
 
     return pred_transcript
 
-def inference2(audio_bytes, model, tokenizer, sampling_rate = 16000, device="cpu"): 
+def inference2(audio, model, tokenizer, sampling_rate = 16000, device="cpu"): 
 
-    audio, orig_sr = torchaudio.load(io.BytesIO(audio_bytes), normalize=True) #normalize: true, convert into [-1, 1], normalize: false, audio bit is between [0, 255]
-    if orig_sr != sampling_rate:
-        audio = torchaudio.functional.resample(audio, orig_freq=orig_sr, new_freq=sampling_rate) # re-sample to 16.000
+    # audio, orig_sr = torchaudio.load(io.BytesIO(audio_bytes), normalize=True) #normalize: true, convert into [-1, 1], normalize: false, audio bit is between [0, 255]
+    # if orig_sr != sampling_rate:
+    #     audio = torchaudio.functional.resample(audio, orig_freq=orig_sr, new_freq=sampling_rate) # re-sample to 16.000
 
     # Transforms
     audio2mels = T.MelSpectrogram(

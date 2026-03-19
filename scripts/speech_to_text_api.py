@@ -8,6 +8,8 @@ from pydub.utils import make_chunks
 import os 
 from pathlib import Path
 
+from utils import get_libri_file_list
+
 r = sr.Recognizer() # Initialize the recognizer
 
 def record_text():
@@ -85,7 +87,11 @@ if __name__ == "__main__":
     TEMP_DIR = Path("data/temp")
     TEMP_DIR.mkdir(exist_ok=True)
 
-    txt = decode_whole_file(r"C:\Users\HuyenDT\Downloads\LibriSpeech\dev-clean\84\121123\84-121123-0002.flac")
+    filelist = get_libri_file_list()
+    file_idx = 0 
+
+    audio_path, org_transcript = filelist[file_idx] 
+    txt = decode_whole_file(audio_path)
     print(txt)
     # while (1):
     #     text = record_text() 

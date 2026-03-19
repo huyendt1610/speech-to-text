@@ -87,6 +87,10 @@ const useStyles = makeStyles((theme) => ({
     color: '#000000a6 !important',
     fontWeight: 'bolder',
     padding: '1px 24px 1px 16px',
+    //wordBreak: "break-word",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
   },
   tableBody: {
     backgroundColor: 'transparent !important',
@@ -117,6 +121,7 @@ const useStyles = makeStyles((theme) => ({
     color: '#be6a77 !important',
   },
   selectWhite: {
+    marginLeft: "8px",
     color: 'white',                // text màu trắng
     '&:before': {                  // border dưới khi chưa focus
       borderColor: 'white',
@@ -126,8 +131,14 @@ const useStyles = makeStyles((theme) => ({
     },
     '& .MuiSvgIcon-root': {        // icon dropdown
       color: 'white',
-    },
+    }
   },
+  transcriptBox:{
+    overflowY: "auto",
+    maxHeight: "230px",
+    border: "1px solid #ccc",
+    padding: "2px"
+  }
 }));
 
 export default useStyles;

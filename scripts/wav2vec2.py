@@ -5,18 +5,18 @@ from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
 from src.utils import get_libri_file_list
 import io 
 
-# Load mô hình Wav2Vec2 (pre-trained cho tiếng Anh)
+# Load model Wav2Vec2 (pre-trained for English)
 processor = Wav2Vec2Processor.from_pretrained("facebook/wav2vec2-large-960h")
 model = Wav2Vec2ForCTC.from_pretrained("facebook/wav2vec2-large-960h")
 
-# Hàm ghi âm từ microphone
+# record_audio
 def record_audio(duration=5, fs=16000):
     print(f"Recording for {duration} seconds...")
     audio = sd.rec(int(duration * fs), samplerate=fs, channels=1, dtype='float32')
-    sd.wait()  # chờ ghi xong
+    sd.wait()  #
     return audio.flatten()
 
-# Hàm chuyển audio sang text
+# speech_to_text
 def speech_to_text(audio):
     inputs = processor(audio, sampling_rate=16000, return_tensors="pt", padding=True)
     with torch.no_grad():
@@ -26,7 +26,7 @@ def speech_to_text(audio):
     return transcription[0]
 
 if __name__ == "__main__":
-    # Ghi âm 5 giây và chuyển sang text
+    # Record 5 sec and convert to text
     # audio = record_audio(duration=5)
     # text = speech_to_text(audio)
     # print("Transcription:", text)

@@ -18,6 +18,8 @@ import GetAppIcon from '@material-ui/icons/GetApp';
 
 import useStyles from "./styles";
 import ColorButton from "./ColorButton";
+import { whisperLanguages } from "./language.js";
+
 
 const axios = require("axios").default;
 const controller = new AbortController();
@@ -30,7 +32,7 @@ export const ImageUpload = () => {
   const [data, setData] = useState();
   const [audioFile, setAudioFile] = useState(false);
   const [isLoading, setIsloading] = useState(false);
-  const [checkedDeepSpeech2, setCheckedDeepSpeech2] = useState(false);
+  // const [checkedDeepSpeech2, setCheckedDeepSpeech2] = useState(false);
 
   //recording 
   const [recording, setRecording] = useState(false);
@@ -38,8 +40,8 @@ export const ImageUpload = () => {
   const chunksRef = useRef([]);
   const controllerRef = useRef(null);
 
-  const [language, setLanguage] = useState("en");
-
+  const [language, setLanguage] = useState("au");
+  const [model, setModel] = useState("whisper");
 
   let wer = 0;
 
@@ -48,13 +50,14 @@ export const ImageUpload = () => {
     try {
       if (audioFile) {
         //import.meta.env.
-        let url = checkedDeepSpeech2 ? process.env.REACT_APP_API_URL_DEEPSPEECH2 : process.env.REACT_APP_API_URL; 
+        //let url = checkedDeepSpeech2 ? process.env.REACT_APP_API_URL_DEEPSPEECH2 : process.env.REACT_APP_API_URL; 
         let formData = new FormData();
         formData.append("file", selectedFile);
         formData.append("la", language);
+        formData.append("model_name", model)
         let res = await axios({ // axe i os: make an http request to call backend 
           method: "post",
-          url:url,
+          url:process.env.REACT_APP_API_URL,
           data: formData,
           signal: controller.signal,
         });
@@ -120,9 +123,9 @@ export const ImageUpload = () => {
   //   wer = (parseFloat(data.confidence) * 100).toFixed(2);
   // }
 
-  const handleChangeModel = (event) => {
-    setCheckedDeepSpeech2(event.target.checked);
-  };
+  // const handleChangeModel = (event) => {
+  //   setCheckedDeepSpeech2(event.target.checked);
+  // };
 
   const startRecording = async () => {
     clearData()
@@ -176,6 +179,10 @@ export const ImageUpload = () => {
       setLanguage(event.target.value)
   }
 
+  const handleSelectModel = (event) => {
+      setModel(event.target.value)
+  }
+
   return (
     <React.Fragment>
       <AppBar position="static" className={classes.appbar}>
@@ -184,7 +191,7 @@ export const ImageUpload = () => {
             STT: Speech-To-Text
           </Typography>
           <div className={classes.grow} />
-          <FormControlLabel
+          {/* <FormControlLabel
             control={
               <Switch
                 checked={checkedDeepSpeech2}
@@ -192,15 +199,27 @@ export const ImageUpload = () => {
               />
             }
             label="DeepSpeech2"
-          />
-          <FormControl style={{ width: 150 }}>
-            <Select className={classes.selectWhite} value={language}
-                  onChange={handleSelectLanguage}>
-              <MenuItem value="en">English</MenuItem>
-              <MenuItem value="fi">Finnish</MenuItem>
+          /> */}
+          Models
+          <FormControl>
+            <Select className={classes.selectWhite} value={model}
+                    onChange={handleSelectModel}>
+                <MenuItem value="whisper">Whisper</MenuItem>
+                <MenuItem value="wav2vec2">Wav2Vec2</MenuItem>
+                <MenuItem value="wav2vec2_fi">Wav2Vec2-Finnish</MenuItem>
+                <MenuItem value="deepspeech2">DeepSpeech2</MenuItem>
             </Select>
           </FormControl>
-          
+          <FormControl>
+            <Select className={classes.selectWhite} value={language}
+                  onChange={handleSelectLanguage}>
+              {Object.entries(whisperLanguages).map(([code, name]) => (
+                <MenuItem key={code} value={code}>
+                  {name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <Avatar src={ recording? recordingLogo: stopRecordLogo}         
             style={{cursor: "pointer" }} //record 
             onClick={recording ? stopRecording : startRecording}> 
@@ -233,7 +252,7 @@ export const ImageUpload = () => {
                 <DropzoneArea
                   // acceptedFiles={['image/*']}
                   acceptedFiles={['.mp3', '.wav', '.ogg', '.aac', '.flac']}
-                  dropzoneText={"Drag and drop an audio of a potato plant leaf to process"}
+                  dropzoneText={"Drag and drop an audio file to process"}
                   onChange={onSelectFile}
                 />
               </CardContent>}
@@ -250,20 +269,12 @@ export const ImageUpload = () => {
                       <TableRow className={classes.tableRow}>
                         <TableCell scope="row" className={classes.tableCell} style={{ height: 280 }}>
                           <Typography variant="h6">
-                           <Box
-                              style={{
-                                maxHeight: 220,
-                                overflow: "auto",
-                                border: "1px solid #ccc",
-                                padding: 2
-                              }}
-                            >
+                           <Box className={classes.transcriptBox}>
                               <Typography>
                                 {data.transcript}
                               </Typography>
                             </Box>
                           </Typography>
-                          
                           <ColorButton variant="contained" color="primary" onClick={handleDownload} startIcon={<GetAppIcon />}>
                             Download
                           </ColorButton>           
@@ -271,26 +282,24 @@ export const ImageUpload = () => {
                       </TableRow>
                       <TableRow className={classes.tableRow}>
                         <TableCell scope="row" className={classes.tableCell1}>
-                         Name: {data.filename}
+                         Name: {data.filename.length > 38 ? "..." + data.filename.slice(-38) : data.filename}
                         </TableCell>
                       </TableRow>
                       <TableRow className={classes.tableRow}>
+                        
                         <TableCell scope="row" className={classes.tableCell1}>
-                         Duration: {data.duration} sec 
+                           <Box sx={{ display: "flex", justifyContent: "space-between" }}>
+                            <span> Duration: {data.duration} sec</span>
+                            <span> Language: {data.language}  </span>
+                          </Box>
                         </TableCell>
                       </TableRow>
-                       <TableRow className={classes.tableRow}>
-                        <TableCell scope="row" className={classes.tableCell1}>
-                                       
-                        </TableCell>
-                      </TableRow>
-                      
                     </TableBody>
                   </Table>
                 </TableContainer>
               </CardContent>}
               {isLoading && 
-              <CardContent className={classes.detail}>
+              <CardContent className={classes.detail} style={{ height: 350 }}>
                 <CircularProgress color="secondary" className={classes.loader} />
                 <Typography className={classes.title} variant="h6" noWrap>
                   { recording ? "Recording" : "Processing"}
