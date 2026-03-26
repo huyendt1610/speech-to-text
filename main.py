@@ -63,13 +63,16 @@ async def predict(file: UploadFile, la: str = Form(...), model_name: str = Form(
         waveform, duration = validateFile(audio_bytes)
 
         language = "en"
+        print(language)
         if (model_name == "deepspeech2"): 
             pred_transcript = inference2(waveform, deepSpeech2_model, tokenizer)
         elif (model_name == "whisper"): 
+            waveform = waveform.flatten()
             result = whisper_model.transcribe(waveform, language= la) if la != "au" else whisper_model.transcribe(waveform)
             pred_transcript = result["text"]
             language =result["language"]
         else: 
+            waveform = waveform.flatten()
             # processor = processor_fi if la=="fi" else processor_en
             # model = model_fi if la=="fi" else model_en
             processor, model, language = load_model(model_name)
@@ -86,6 +89,7 @@ async def predict(file: UploadFile, la: str = Form(...), model_name: str = Form(
         }
     except Exception as e:
         logger.exception("Model inference failed")
+        print(e)
         raise HTTPException(status_code=500, detail="Model inference error")
 
 def load_model(model_name):
@@ -115,7 +119,6 @@ def validateFile(audio_bytes):
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)       # convert to mono
 
-    waveform = waveform.flatten()
     return waveform, duration 
 
 def transcribe_chunks(processor, model, chunks, sr =16000, device="cpu"):

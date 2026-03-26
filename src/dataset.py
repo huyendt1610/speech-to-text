@@ -10,6 +10,7 @@ from transformers import Wav2Vec2CTCTokenizer
 import re
 import shutil
 import random
+import pandas as pd 
 
 tokenizer = Wav2Vec2CTCTokenizer.from_pretrained("facebook/wav2vec2-base")
 
@@ -23,11 +24,16 @@ class LibrispeechDataset(Dataset):
                  num_audio_channels = 1,
                  is_from_cached=False,
                  cached_path = "dataset_cache",
-                 cache_version = 0): 
+                 cache_version = 0,
+                 max_audio_duration=20.0, 
+                 min_audio_duration=2.0): 
 
         self.sampling_rate = sampling_rate 
         self.num_audio_channels = num_audio_channels
         self.is_augment = is_augment
+
+        self.min_audio_samples = int(min_audio_duration * sampling_rate)
+        self.max_audio_samples = int(max_audio_duration * sampling_rate)
 
         # preload data 
         self.data = []
@@ -65,6 +71,11 @@ class LibrispeechDataset(Dataset):
                         transcript_file = [path for path in files if ".txt" in path][0]
                         with open(os.path.join(path_to_section, transcript_file), "r") as f: 
                             transcripts = f.readlines()
+                        
+                        audio_durations = pd.read_csv(os.path.join(path_to_section, "audio_durations.csv"))
+                        audio_durations_dict = audio_durations.set_index("root")["duration"].to_dict()
+
+                        duration = audio_durations_dict[audio_root]
 
                         for line in transcripts: 
                             split_line = line.split() # default is space => return an array
@@ -73,9 +84,10 @@ class LibrispeechDataset(Dataset):
                             full_path_to_audio_file = os.path.join(path_to_section, audio_file)
                             transcript = " ".join(split_line[1:]).strip()
 
-                            self.librispeech_data.append(
-                                (full_path_to_audio_file, transcript)
-                            )
+                            if (duration >= min_audio_duration) and (duration <= max_audio_duration):
+                                self.librispeech_data.append(
+                                    (full_path_to_audio_file, transcript)
+                                )
 
             # print(len(self.librispeech_data))
             # Create a transform to transfrom the audio waveform → Mel Spectrogram: display Frequency by time (Time × Frequency)
@@ -183,8 +195,12 @@ def collate_fun(batch): # combine multiple samples into batchs
   
 class SpecAugment:
     def __init__(self):
-        self.freq_mask = T.FrequencyMasking(15)
-        self.time_mask = T.TimeMasking(35)
+        self.freq_mask = T.FrequencyMasking(15) # Frequency Masking select randomly on the freq axis f0 and set value =0 (mask), max length of mask = 15 (each mask hides max 15 freq bins)
+        self.time_mask = T.TimeMasking(35) # apply on time axis (max time steps)
+        # if mask too wide => lost information => model learn difficultly 
+        # if mask too small => small effect of augmentation 
+        # freq_mask_param ≈ 0.1 – 0.2 × num of frequency bins
+        # time_mask_param ≈ 0.1 – 0.2 × num of time steps
 
     def __call__(self, spec):
         spec = self.freq_mask(spec)
@@ -192,12 +208,11 @@ class SpecAugment:
         return spec
 
 
-
 class AudioAugment:
     def __init__(
         self,
         sample_rate=16000,
-        speed_prob=0.5,
+        speed_prob=0.5, # how many percent of audio will be augmentation 
         noise_prob=0.3,
         gain_prob=0.3,
         shift_prob=0.3,
@@ -215,7 +230,7 @@ class AudioAugment:
         if speed == 1.0:
             return waveform
 
-        resampler = torchaudio.transforms.Resample(
+        resampler = torchaudio.transforms.Resample( # resample audio at diff sample rate, then replay audio at the org rate => audio is faster or slower
             self.sample_rate,
             int(self.sample_rate * speed)
         )
@@ -236,14 +251,16 @@ class AudioAugment:
         return waveform + noise * noise_level
 
     # ---------- GAIN ----------
-    def random_gain(self, waveform):
+    def random_gain(self, waveform): # change amplitude of audio => ex speaker speaks loudly/slowly
         gain = random.uniform(0.7, 1.3)
         return waveform * gain
 
     # ---------- TIME SHIFT ----------
     def time_shift(self, waveform):
-        shift = int(random.uniform(-0.1, 0.1) * self.sample_rate)
-        return torch.roll(waveform, shifts=shift, dims=1)
+        shift = int(random.uniform(-0.1, 0.1) * self.sample_rate) # [-0.1, 0.1] * sample_rate
+        return torch.roll(waveform, shifts=shift, dims=1) # shift waveform with time axis
+    # Small shift: ±0.1 – 0.3 sec (based on sample_rate) is safe 
+    # Large shift: >0.5 giây: cause mismatch with transcript (in case with short audio)
 
     # ---------- APPLY ----------
     def __call__(self, waveform):

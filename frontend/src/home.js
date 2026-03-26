@@ -7,7 +7,7 @@ import Container from "@material-ui/core/Container";
 import React from "react";
 import Card from "@material-ui/core/Card";
 import CardContent from "@material-ui/core/CardContent";
-import { Paper, Switch, FormControlLabel, TextField, Box, Grid, TableContainer, 
+import { Paper,Tooltip, Switch, FormControlLabel, TextField, Box, Grid, TableContainer, 
   Table, TableBody, TableHead, TableRow, TableCell, CircularProgress, Select, MenuItem,InputLabel, FormControl } from "@material-ui/core";
 import recordingLogo from "./src-images/music.png";
 import stopRecordLogo from "./src-images/microphone.png";
@@ -203,7 +203,7 @@ export const ImageUpload = () => {
           Models
           <FormControl>
             <Select className={classes.selectWhite} value={model}
-                    onChange={handleSelectModel}>
+                    onChange={handleSelectModel} >
                 <MenuItem value="whisper">Whisper</MenuItem>
                 <MenuItem value="wav2vec2">Wav2Vec2</MenuItem>
                 <MenuItem value="wav2vec2_fi">Wav2Vec2-Finnish</MenuItem>
@@ -220,10 +220,12 @@ export const ImageUpload = () => {
               ))}
             </Select>
           </FormControl>
-          <Avatar src={ recording? recordingLogo: stopRecordLogo}         
-            style={{cursor: "pointer" }} //record 
-            onClick={recording ? stopRecording : startRecording}> 
-          </Avatar>
+          <Tooltip title="Start recording">
+            <Avatar src={ recording? recordingLogo: stopRecordLogo}         
+              style={{cursor: "pointer" }} //record 
+              onClick={recording ? stopRecording : startRecording}> 
+            </Avatar>
+          </Tooltip>
         </Toolbar>
       </AppBar>
       <Container maxWidth={false} className={classes.mainContainer} disableGutters={true}>

@@ -31,23 +31,23 @@ def main():
     DATA_DIR = PROJECT_ROOT / "data"
     DATASET_CACHE = DATA_DIR / "dataset_cache"
 
-    DATASET_ROOT = "../data/LibriSpeech"
+    DATASET_ROOT = "./data/LibriSpeech"
     os.listdir(DATASET_ROOT)
     
     ### Training agurments 
     BATCH_SIZE = 32
-    TRAINING_ITERATIONS = 10 # 50000 # how many iterations 
-    EVAL_ITERATIONS = TRAINING_ITERATIONS//5  # 2500 # How often want to evaluate a learning reate 
+    TRAINING_ITERATIONS = 20000 # 50000 # how many iterations 
+    EVAL_ITERATIONS = TRAINING_ITERATIONS//10  # 2500 # How often want to evaluate a learning reate 
     LEARNING_RATE = 1e-4 # 10^(-4)
-    NUM_WORKERS = 2 # no of CPU (if has data preload => set NUM_WORKERS = 0)
+    NUM_WORKERS = 6 # no of CPU (if has data preload => set NUM_WORKERS = 0)
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     NUM_WARMUPS_STEPS = np.floor(0.01 * TRAINING_ITERATIONS) # get 1% of trainining steps to increase LEARNING_RATE from 0 to LEARNING_RATE
 
     tokenizer = Wav2Vec2CTCTokenizer.from_pretrained("facebook/wav2vec2-base")
 
     ### Data loaders ###
-    trainset = dataset.LibrispeechDataset(path_to_data_root=DATASET_ROOT, include_splits=["train-clean-100"], is_from_cached = False, save_cached=False, is_augment=True)
-    sampleset = dataset.LibrispeechDataset(path_to_data_root=DATASET_ROOT, include_splits=["dev-clean"], is_from_cached = False, save_cached=False)
+    trainset = dataset.LibrispeechDataset(path_to_data_root=DATASET_ROOT, include_splits=["train-clean-100", "train-clean-360"], is_from_cached = False, is_augment=True)
+    sampleset = dataset.LibrispeechDataset(path_to_data_root=DATASET_ROOT, include_splits=["dev-clean"], is_from_cached = False)
     #trainset = dataset.LibrispeechDataset(path_to_data_root=DATASET_ROOT, include_splits=["train-clean-100"], is_from_cached = False, cache_version=1, cached_path=DATASET_CACHE)
     #sampleset = dataset.LibrispeechDataset(path_to_data_root=DATASET_ROOT, include_splits=["dev-clean"], is_from_cached = False, cache_version=2, cached_path=DATASET_CACHE)
 
@@ -77,18 +77,31 @@ def main():
     scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=NUM_WARMUPS_STEPS, num_training_steps=TRAINING_ITERATIONS)
 
     # model.load_state_dict(torch.load("best_weights.pt",weights_only=True)) # best_weights_512_3rnn, best_weights_128_2rnn
+    checkpoint = torch.load("checkpoint.pt")
+
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    completed_epoch = checkpoint['epoch'] 
+    # loss = checkpoint['loss']
+
+    # best_val_loss = loss
+    completed_steps = completed_epoch
+    scheduler.last_epoch = completed_epoch
+    # train_his_loss = torch.load("train_his_loss.pt", weights_only=False)
+    # validation_his_loss = torch.load("validation_his_loss.pt", weights_only=False)
 
     best_val_loss = np.inf 
-    train = True 
-    completed_steps = 0 
+    # completed_steps = 0
+
     train_his_loss, validation_his_loss = [], []
-    pbar = tqdm(range(TRAINING_ITERATIONS))
+
+    train = True 
+    pbar = tqdm(range(TRAINING_ITERATIONS - completed_steps))
     start_total = time.time()
 
-
     while train: 
-        training_loss = []
-        validation_loss = []
+        batch_training_loss = []
+        batch_validation_loss = []
         start_epoch = time.time()
 
         for batch in trainloader: 
@@ -121,7 +134,7 @@ def main():
             optimizer.zero_grad(set_to_none=True) # reset gradients of previous batch, which does not have effect to the next batch
             scheduler.step() # update learning rate 
 
-            training_loss.append(loss.item())
+            batch_training_loss.append(loss.item())
             completed_steps += 1 
             pbar.update(1)
 
@@ -151,41 +164,45 @@ def main():
                         )
 
                         # Store Loss
-                        validation_loss.append(loss.item())
+                        batch_validation_loss.append(loss.item())
                 
-                training_loss_mean = np.mean(training_loss)
-                valid_loss_mean = np.mean(validation_loss)
+                epoch_training_loss_mean = np.mean(batch_training_loss)
+                epoch_valid_loss_mean = np.mean(batch_validation_loss)
 
                 # log to hist
-                train_his_loss.append(training_loss_mean)
-                validation_his_loss.append(valid_loss_mean)
+                train_his_loss.append(epoch_training_loss_mean)
+                validation_his_loss.append(epoch_valid_loss_mean)
 
                 # Save model if val loss decreases 
-                if valid_loss_mean < best_val_loss:
+                if epoch_valid_loss_mean < best_val_loss:
                     print(f"---Saving model---{time.time()}")
                     torch.save(model.state_dict(), "best_weights.pt")
                     torch.save({
                         'epoch': completed_steps,
                         'model_state_dict': model.state_dict(),
                         'optimizer_state_dict': optimizer.state_dict(),
+                        "scheduler": scheduler.state_dict(),
+                        'loss': best_val_loss
                     }, "checkpoint.pt")
                                     
-                    best_val_loss = valid_loss_mean
+                    torch.save(train_his_loss, "train_his_loss.pt")
+                    torch.save(validation_his_loss, "validation_his_loss.pt")
 
-                print("Training Loss:", training_loss_mean)
-                print("Validation Loss:", valid_loss_mean)
+                    best_val_loss = epoch_valid_loss_mean
+
+                print("Training Loss:", epoch_training_loss_mean)
+                print("Validation Loss:", epoch_valid_loss_mean)
 
                 # Rest list 
-                training_loss = []
-                validation_loss = []
+                batch_training_loss = []
+                batch_validation_loss = []
 
                 # Set Model to Training mode
                 model.train() 
 
             if completed_steps >= TRAINING_ITERATIONS: 
                 train = False 
-                torch.save(train_his_loss, "train_his_loss.pt")
-                torch.save(validation_his_loss, "validation_his_loss.pt")
+               
                 print("Completed!", f"Total training time: {time.time() - start_total:.2f}s")
                 break
     

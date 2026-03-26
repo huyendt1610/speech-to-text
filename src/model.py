@@ -132,7 +132,7 @@ class DeepSpeech2(nn.Module):
                 conv_in_channels = 1, 
                 conv_out_channels = 32, 
                 rnn_hidden_size = 512, # reduce model size
-                rnn_depth = 5, # reduce model size
+                rnn_depth = 5, # reduce model size, but in docs [5-7]
                 tokenizer = None
                 ):
         

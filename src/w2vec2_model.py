@@ -2,7 +2,7 @@ import torch
 from torch import nn 
 import torch.nn.functional as F 
 
-from .utils import (
+from .w2vec2_utils import (
     W2Vec2Config,
     compute_sub_attention_mask
 )
@@ -332,6 +332,11 @@ class W2Vec2GumbleVectorQuantizer(nn.Module):
         else: 
             marginal_probs = probs.mean(0)
 
+        
+        perplexity_per_codebook = torch.exp(-torch.sum(marginal_probs * torch.log(marginal_probs + 1e-7), dim=-1)) # dim =-1: calculate for each codebook 
+        perplexity = perplexity_per_codebook.sum() 
+        return perplexity
+
     def forward(self, hidden_states, mask_time_indices=None):
         batch_size, seq_len, hidden_size = hidden_states.shape #
 
@@ -349,6 +354,28 @@ class W2Vec2GumbleVectorQuantizer(nn.Module):
             codevector_soft_dist = hidden_states.softmax(axis=-1) # result how many % to choose each vector in each codebook
             
             perplexity = self._compute_perplexity(codevector_soft_dist, mask_time_indices)
+        else: # not training => inferencing
+            codevector_probs = hidden_states.argmax(dim=-1) # get the most likely vector
+            codevector_probs = torch.zeros_like(hidden_states, device=hidden_states.device)
+
+            # torch.arange(hidden_states.shape[0]): batch index, 2:39
+            codevector_probs[torch.arange(hidden_states.shape[0]), codevector_probs] = 1 # which index is max 
+
+            codevector_probs = codevector_probs.reshape(batch_size * seq_len, self.num_groups, -1)
+            perplexity = self._compute_perplexity(codevector_probs, mask_time_indices)
+
+        codevector_probs= codevector_probs.reshape(batch_size * seq_len, -1) # [a*2, 320]=>[a, 640]
+
+        # codevector_probs.shape = [a, 642] => unsqueeze(-1): [a, 640, 1] * [1, 640, b] = [a, 640, b]
+        # each vectors has 2 vectors, each from diff codebook (as codevector_probs is one-hot vector =>zero-out others, only keeps codebooks selected)
+        codevectors_per_group = codevector_probs.unsqueeze(-1) * self.codevectors.type_as(codevector_probs)
+        codevectors = codevectors_per_group.reshape(batch_size *seq_len, self.num_groups, self.num_vars, -1)  #shape: [a, 2, 320, b]
+
+        codevectors = codevectors.sum(dim=-2) # sum the last second dim (320), one-hot vector => after sum(remove this di) => shape: [a, 2, b]
+        codevectors = codevectors.reshape(batch_size, seq_len, -1)
+
+        return codevectors, perplexity
+
 
 class W2Vec2ForPreTraining(nn.Module):
     def __init__(self, config):
@@ -360,6 +387,23 @@ class W2Vec2ForPreTraining(nn.Module):
         self.dropout_features = nn.Dropout(config.pre_quatizer_dropout)
 
         self.quantizer = W2Vec2GumbleVectorQuantizer(config)
+
+        self.project_hid = nn.Linear(config.embedding_dimension, config.encodevector_dim) # convert to same shape to compare cosine similarity
+        self.project_q = nn.Linear(config.encodevector_dim, config.encodevector_dim) 
+
+    def _compute_cosine_similarity(self,
+                                   target_features, # correct
+                                   negative_features, # distractors
+                                   predicted_features, # predicted 
+                                   temperature=0.1): 
+        target_features = target_features.unsqueeze(0) 
+        targets = torch.cat([target_features, negative_features], dim=0) # add K+1
+        
+        cosine_sim = torch.cosine_similarity(predicted_features, targets, dim=-1) # compute the cosine similarity along the embeddings (the last dimension)
+
+        cosine_sim = cosine_sim/temperature
+
+        return cosine_sim
 
     def forward(self, 
                 input_values, 
@@ -380,14 +424,38 @@ class W2Vec2ForPreTraining(nn.Module):
                                                             )
 
         # quantization is done by Gumble-softmax
-        self.quantizer(features_to_quantize, mask_time_indices)
+        qauntized_codes, perplexity = self.quantizer(features_to_quantize, mask_time_indices)
+
+        quantized_codes = self.project_q(qauntized_codes)
+        transformer_vq = self.project_hid(tranformer_outputs)
+
+        loss = None 
+        diversity_loss = None 
+        contrastive_loss = None 
+
+        if sampled_negative_indices is not None: 
+            batch_size, seq_len, vq_size = quantized_codes.shape 
+            _, _, num_negatives = sampled_negative_indices.shape 
+
+            negative_quantized_codes = quantized_codes.reshape(-1, vq_size)[sampled_negative_indices.flatten()]
+            negative_quantized_codes = negative_quantized_codes.reshape(batch_size, seq_len, num_negatives, vq_size)
+            negative_quantized_codes = negative_quantized_codes.permute()
+
+            cosine_sim = self._compute_cosine_similarity(target_features=quantized_codes,
+                                                         negative_features=negative_quantized_codes,
+                                                         predicted_features=transformer_vq,
+                                                         temperature=self.config.contrastive_logits_temperature)
+
+
+
+
 
 if __name__ == "__main__":
-    from .utils import W2Vec2Config
-    from .dataset import W2Vec2LibriDataset, W2Vec2CollateFunctionForPreTraining
+    from .w2vec2_utils import W2Vec2Config
+    from .w2vec2_dataset import W2Vec2LibriDataset, W2Vec2CollateFunctionForPreTraining
     from torch.utils.data import DataLoader 
 
-    path_to_data_root = "../data/LibriSpeech"
+    path_to_data_root = "./data/LibriSpeech" #cwd = sttproject/
 
     w2v2_config = W2Vec2Config(num_transformer_layers=2)
     # model = W2Vec2Model(config=w2v2_config)

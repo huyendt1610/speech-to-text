@@ -6,7 +6,7 @@ import torchaudio
 from torch.utils.data import Dataset, DataLoader
 from transformers import Wav2Vec2CTCTokenizer 
 
-from .utils import (
+from .w2vec2_utils import (
     compute_span_mask, 
     sample_negative_indices, 
     compute_sub_attention_mask,
