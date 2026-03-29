@@ -92,7 +92,8 @@ class ConvolutionFeatureExtractor(nn.Module):
     
 class RNNLayer(nn.Module): 
     def __init__(self, input_size, 
-                 hidden_size = 512): # what the invading implementaion used 
+                 hidden_size = 512, 
+                 dropout=0.3): # what the invading implementaion used 
         super().__init__()
 
         self.hidden_size = hidden_size
@@ -103,7 +104,7 @@ class RNNLayer(nn.Module):
             hidden_size=hidden_size, # no of neuron at hidden state 
             batch_first=True, 
             bidirectional=True, # when training the rnn, future steps can look in the past steps and vice versa as the entire input is passed at once
-            dropout=0.5
+            dropout=dropout
         )
 
         self.layernorm = nn.LayerNorm(2 * hidden_size) # need *2 as for both forward and backward direction with bidirectional=True

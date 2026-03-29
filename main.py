@@ -4,6 +4,7 @@ from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor, Wav2Vec2CTCTokenizer
 import io 
 import torch
 import torchaudio
+import torchaudio.functional as F
 import logging
 import uuid
 import numpy as np
@@ -112,12 +113,19 @@ def validateFile(audio_bytes):
     waveform, orig_sr = torchaudio.load(io.BytesIO(audio_bytes), normalize=True)
     duration = np.floor(waveform.shape[1]/orig_sr)
 
+    if waveform.shape[0] > 1:
+        waveform = waveform.mean(dim=0, keepdim=True)       # convert to mono
+
     if orig_sr != SAMPLING_RATE:
         #print(f"Changed the sampling rate from {orig_sr}: {SAMPLING_RATE}")
         waveform = torchaudio.functional.resample(waveform, orig_freq=orig_sr, new_freq=SAMPLING_RATE) # re-sample to 16.000
 
-    if waveform.shape[0] > 1:
-        waveform = waveform.mean(dim=0, keepdim=True)       # convert to mono
+    # trim silence
+    segments , _ = F.detect_speech(waveform, SAMPLING_RATE) # return [(start1, end1), (start2, end2), ...]
+
+    start = segments[0][0]
+    end = segments[-1][1]
+    waveform = waveform[:, start:end] # trim start, end of audio 
 
     return waveform, duration 
 

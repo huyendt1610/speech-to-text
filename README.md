@@ -16,16 +16,22 @@ It provides an end-to-end solution for audio transcription, allowing users to up
 
 ## Installation
 
+## Frontend 
+
 ```bash
 # Clone repository
 git clone https://github.com/huyendt1610/speech-to-text.git
 cd sttproject/frontend
 
 # Install dependencies
-npm install 
+npm install --from-lock-json
+npm audit fix
 
-# Run
-npm run start
+# Run frontend
+npm run start 
+
+# Run backend
+python main.py
 
 ```
 ## Credits / Acknowledgements

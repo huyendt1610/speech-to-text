@@ -75,14 +75,14 @@ class LibrispeechDataset(Dataset):
                         audio_durations = pd.read_csv(os.path.join(path_to_section, "audio_durations.csv"))
                         audio_durations_dict = audio_durations.set_index("root")["duration"].to_dict()
 
-                        duration = audio_durations_dict[audio_root]
-
                         for line in transcripts: 
                             split_line = line.split() # default is space => return an array
                             audio_root = split_line[0]
                             audio_file = audio_root + ".flac"
                             full_path_to_audio_file = os.path.join(path_to_section, audio_file)
                             transcript = " ".join(split_line[1:]).strip()
+
+                            duration = audio_durations_dict[audio_root]
 
                             if (duration >= min_audio_duration) and (duration <= max_audio_duration):
                                 self.librispeech_data.append(
@@ -94,6 +94,8 @@ class LibrispeechDataset(Dataset):
             # Waveform (1D signal) => STFT (Fourier Transform) -> Mel scaling -> Mel Spectrogram (2D tensor)
             # Mel scale: based on how people can hear the voice to separate into level (is log(Hz))
             # n_fft?, window_size? window_fn: torch.hann_window
+            # default n_fft = 400 (25s) (16kHz × 0.025s = 400 samples)
+            # default hop_length = n_fft/2
             self.audio2mels = T.MelSpectrogram( # default n_fft & hanning_window
                 sample_rate = self.sampling_rate, # tấn suất lấy mẫu của audio: esim: 16000 Hz = 1 giây có 16000 mẫu
                 n_mels=80 # Mel filter banks: (optimal value) Output sẽ có 80 hàng (80 tần số mel), => chia trục tần số thành 80 dải Mel.
@@ -246,12 +248,12 @@ class AudioAugment:
     
     # ---------- NOISE ----------
     def add_noise(self, waveform):
-        noise = torch.randn_like(waveform)
-        noise_level = random.uniform(0.001, 0.01)
+        noise = torch.randn_like(waveform) # random noise with the same shape as waveform 
+        noise_level = random.uniform(0.001, 0.01) 
         return waveform + noise * noise_level
 
     # ---------- GAIN ----------
-    def random_gain(self, waveform): # change amplitude of audio => ex speaker speaks loudly/slowly
+    def random_gain(self, waveform): # change amplitude of audio => ex: speaker speaks loudly/slowly
         gain = random.uniform(0.7, 1.3)
         return waveform * gain
 

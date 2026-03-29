@@ -41,7 +41,9 @@ def main():
     LEARNING_RATE = 1e-4 # 10^(-4)
     NUM_WORKERS = 6 # no of CPU (if has data preload => set NUM_WORKERS = 0)
     DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    NUM_WARMUPS_STEPS = np.floor(0.01 * TRAINING_ITERATIONS) # get 1% of trainining steps to increase LEARNING_RATE from 0 to LEARNING_RATE
+    NUM_WARMUPS_STEPS = np.floor(0.01 * TRAINING_ITERATIONS) 
+    # Phase 1: Warmup, get 1% of trainining steps to increase LEARNING_RATE from 0 to LEARNING_RATE, 0.01 * 20000 = 200 steps
+    # Phase 2: Cosine decay, then decrease learning rate by Cosine function, to smooth learning rate 
 
     tokenizer = Wav2Vec2CTCTokenizer.from_pretrained("facebook/wav2vec2-base")
 
@@ -51,11 +53,16 @@ def main():
     #trainset = dataset.LibrispeechDataset(path_to_data_root=DATASET_ROOT, include_splits=["train-clean-100"], is_from_cached = False, cache_version=1, cached_path=DATASET_CACHE)
     #sampleset = dataset.LibrispeechDataset(path_to_data_root=DATASET_ROOT, include_splits=["dev-clean"], is_from_cached = False, cache_version=2, cached_path=DATASET_CACHE)
 
-    trainloader = DataLoader(trainset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fun, num_workers=NUM_WORKERS,
+    trainloader = DataLoader(trainset, batch_size=BATCH_SIZE, 
+                            shuffle=True, 
+                            collate_fn=collate_fun, 
+                            num_workers=NUM_WORKERS,
                             pin_memory=True,
                             persistent_workers=True,
                             prefetch_factor=2)
-    testloader = DataLoader(sampleset, batch_size=BATCH_SIZE, shuffle=True, collate_fn=collate_fun, num_workers=NUM_WORKERS,  
+    testloader = DataLoader(sampleset, batch_size=BATCH_SIZE, 
+                            shuffle=True, collate_fn=collate_fun, 
+                            num_workers=NUM_WORKERS,  
                             pin_memory=True,
                             persistent_workers=True,
                             prefetch_factor=2) # , persistent_workers=True when set multiple workers
@@ -77,23 +84,23 @@ def main():
     scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=NUM_WARMUPS_STEPS, num_training_steps=TRAINING_ITERATIONS)
 
     # model.load_state_dict(torch.load("best_weights.pt",weights_only=True)) # best_weights_512_3rnn, best_weights_128_2rnn
-    checkpoint = torch.load("checkpoint.pt")
+    checkpoint = torch.load("checkpoint.pt", weights_only =False)
 
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    scheduler.load_state_dict(checkpoint["scheduler"])
     completed_epoch = checkpoint['epoch'] 
-    # loss = checkpoint['loss']
+    loss = checkpoint['loss']
 
-    # best_val_loss = loss
+    best_val_loss = loss
     completed_steps = completed_epoch
-    scheduler.last_epoch = completed_epoch
-    # train_his_loss = torch.load("train_his_loss.pt", weights_only=False)
-    # validation_his_loss = torch.load("validation_his_loss.pt", weights_only=False)
+    #scheduler.last_epoch = completed_epoch
+    train_his_loss = torch.load("train_his_loss.pt", weights_only=False)
+    validation_his_loss = torch.load("validation_his_loss.pt", weights_only=False)
 
-    best_val_loss = np.inf 
+    # best_val_loss = np.inf 
     # completed_steps = 0
-
-    train_his_loss, validation_his_loss = [], []
+    #train_his_loss, validation_his_loss = [], []
 
     train = True 
     pbar = tqdm(range(TRAINING_ITERATIONS - completed_steps))
