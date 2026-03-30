@@ -39,6 +39,9 @@ export const ImageUpload = () => {
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const controllerRef = useRef(null);
+  const socketRef = useRef(null);
+  const [transcribedText, setTranscribedText] = useState("");
+
 
   const [language, setLanguage] = useState("au");
   const [model, setModel] = useState("whisper");
@@ -134,28 +137,48 @@ export const ImageUpload = () => {
 
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorderRef.current = new MediaRecorder(stream);
+    socketRef.current = new WebSocket("ws://localhost:8000/ws");
+
+    socketRef.current.onmessage = (event) => {
+      // append partial text
+      setTranscribedText((prev) => prev + " " + event.data);
+    };
+
 
     chunksRef.current = [];
     mediaRecorderRef.current.ondataavailable = e => {
       if (e.data.size > 0) chunksRef.current.push(e.data);
+      if (e.data.size > 0 && socketRef.current.readyState === 1) {
+        socketRef.current.send(e.data);
+      }
     };
 
     mediaRecorderRef.current.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: "audio/webm" });
       //const url = URL.createObjectURL(blob);
       // setPreview(url);
+      chunksRef.current = []; // reset chunks
+
       setData(undefined);
       setSelectedFile(blob);
       setAudioFile(true);
+
+      // Nếu dùng WebSocket → gửi event báo kết thúc session
+      if (socketRef.current && socketRef.current.readyState === 1) {
+        socketRef.current.send(JSON.stringify({ type: "session_end" }));
+        socketRef.current.close();
+      }
     };
 
-    mediaRecorderRef.current.start();
+    mediaRecorderRef.current.start(250);
     setRecording(true);
   };
 
   const stopRecording = () => {
     mediaRecorderRef.current.stop();
     setRecording(false);
+    
+    if (socketRef.current) socketRef.current.close();
   };
 
   const handleDownload = () => {

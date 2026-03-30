@@ -106,112 +106,124 @@ def main():
     pbar = tqdm(range(TRAINING_ITERATIONS - completed_steps))
     start_total = time.time()
 
-    while train: 
-        batch_training_loss = []
-        batch_validation_loss = []
-        start_epoch = time.time()
+    try:
+        while train: 
+            batch_training_loss = []
+            batch_validation_loss = []
+            start_epoch = time.time()
 
-        for batch in trainloader: 
-            # print(batch)
-            # input_lengths: seq_lens after conv layer: where is actual input, where is padding 
-            logits, input_lengths = model(batch["input_values"].to(DEVICE), batch["seq_lens"])
-            
-            #print(logits.shape)
-            #print(input_lengths)
-
-            log_probs = nn.functional.log_softmax(logits, dim=-1) # dim=-1: apply softmax for the last dimension [batch_size, num_classes],
-            #print(log_probs.shape) # => [batch_size, seq_lens, num_classes]
-            log_probs = log_probs.transpose(0,1) # but CTC expect: [Time, batch_size, num_classes] => need to transpose two first dimensions
-
-            # print(len(batch["labels"]), sum(batch["target_lengths"])) # the same number 
-
-            loss = nn.functional.ctc_loss(
-                log_probs=log_probs,
-                targets=batch["labels"].to(DEVICE),
-                input_lengths=input_lengths, 
-                target_lengths=batch['target_lengths'].to(DEVICE),
-                blank=tokenizer.pad_token_id, 
-                reduction="mean"
-            )
-
-            # print(loss)
-
-            loss.backward() # backpropagation
-            optimizer.step() # update weights
-            optimizer.zero_grad(set_to_none=True) # reset gradients of previous batch, which does not have effect to the next batch
-            scheduler.step() # update learning rate 
-
-            batch_training_loss.append(loss.item())
-            completed_steps += 1 
-            pbar.update(1)
-
-            if completed_steps % EVAL_ITERATIONS == 0: 
-                print(f"Evaluating...{time.time()}")
-                model.eval() 
-
-                for batch in tqdm(testloader): 
-                    ### Pass through model and get input_lengths (pocst convolutions) and logits ###
-                    with torch.no_grad(): # tells PyTorch to not calculate the gradients in this block 
-                        logits, input_lengths = model(x=batch["input_values"].to(DEVICE), seq_lens=batch["seq_lens"])
-
-                        #CTC expects log probabilities 
-                        log_probs = nn.functional.log_softmax(logits, dim=-1)
-
-                        # CTC also expects (TxBxC), we have (BxTxC)
-                        log_probs = log_probs.transpose(0,1)
-
-                        # Compute CTC loss 
-                        loss = nn.functional.ctc_loss(
-                            log_probs=log_probs,
-                            targets=batch["labels"].to(DEVICE),
-                            input_lengths=input_lengths, 
-                            target_lengths=batch['target_lengths'].to(DEVICE),
-                            blank=tokenizer.pad_token_id, 
-                            reduction="mean"
-                        )
-
-                        # Store Loss
-                        batch_validation_loss.append(loss.item())
+            for batch in trainloader: 
+                # print(batch)
+                # input_lengths: seq_lens after conv layer: where is actual input, where is padding 
+                logits, input_lengths = model(batch["input_values"].to(DEVICE), batch["seq_lens"])
                 
-                epoch_training_loss_mean = np.mean(batch_training_loss)
-                epoch_valid_loss_mean = np.mean(batch_validation_loss)
+                #print(logits.shape)
+                #print(input_lengths)
 
-                # log to hist
-                train_his_loss.append(epoch_training_loss_mean)
-                validation_his_loss.append(epoch_valid_loss_mean)
+                log_probs = nn.functional.log_softmax(logits, dim=-1) # dim=-1: apply softmax for the last dimension [batch_size, num_classes],
+                #print(log_probs.shape) # => [batch_size, seq_lens, num_classes]
+                log_probs = log_probs.transpose(0,1) # but CTC expect: [Time, batch_size, num_classes] => need to transpose two first dimensions
 
-                # Save model if val loss decreases 
-                if epoch_valid_loss_mean < best_val_loss:
-                    print(f"---Saving model---{time.time()}")
-                    torch.save(model.state_dict(), "best_weights.pt")
-                    torch.save({
-                        'epoch': completed_steps,
-                        'model_state_dict': model.state_dict(),
-                        'optimizer_state_dict': optimizer.state_dict(),
-                        "scheduler": scheduler.state_dict(),
-                        'loss': best_val_loss
-                    }, "checkpoint.pt")
-                                    
-                    torch.save(train_his_loss, "train_his_loss.pt")
-                    torch.save(validation_his_loss, "validation_his_loss.pt")
+                # print(len(batch["labels"]), sum(batch["target_lengths"])) # the same number 
 
-                    best_val_loss = epoch_valid_loss_mean
+                loss = nn.functional.ctc_loss(
+                    log_probs=log_probs,
+                    targets=batch["labels"].to(DEVICE),
+                    input_lengths=input_lengths, 
+                    target_lengths=batch['target_lengths'].to(DEVICE),
+                    blank=tokenizer.pad_token_id, 
+                    reduction="mean"
+                )
 
-                print("Training Loss:", epoch_training_loss_mean)
-                print("Validation Loss:", epoch_valid_loss_mean)
+                # print(loss)
 
-                # Rest list 
-                batch_training_loss = []
-                batch_validation_loss = []
+                loss.backward() # backpropagation
+                optimizer.step() # update weights
+                optimizer.zero_grad(set_to_none=True) # reset gradients of previous batch, which does not have effect to the next batch
+                scheduler.step() # update learning rate 
 
-                # Set Model to Training mode
-                model.train() 
+                batch_training_loss.append(loss.item())
+                completed_steps += 1 
+                pbar.update(1)
 
-            if completed_steps >= TRAINING_ITERATIONS: 
-                train = False 
-               
-                print("Completed!", f"Total training time: {time.time() - start_total:.2f}s")
-                break
+                if completed_steps % EVAL_ITERATIONS == 0: 
+                    print(f"Evaluating...{time.time()}")
+                    model.eval() 
+
+                    for batch in tqdm(testloader): 
+                        ### Pass through model and get input_lengths (pocst convolutions) and logits ###
+                        with torch.no_grad(): # tells PyTorch to not calculate the gradients in this block 
+                            logits, input_lengths = model(x=batch["input_values"].to(DEVICE), seq_lens=batch["seq_lens"])
+
+                            #CTC expects log probabilities 
+                            log_probs = nn.functional.log_softmax(logits, dim=-1)
+
+                            # CTC also expects (TxBxC), we have (BxTxC)
+                            log_probs = log_probs.transpose(0,1)
+
+                            # Compute CTC loss 
+                            loss = nn.functional.ctc_loss(
+                                log_probs=log_probs,
+                                targets=batch["labels"].to(DEVICE),
+                                input_lengths=input_lengths, 
+                                target_lengths=batch['target_lengths'].to(DEVICE),
+                                blank=tokenizer.pad_token_id, 
+                                reduction="mean"
+                            )
+
+                            # Store Loss
+                            batch_validation_loss.append(loss.item())
+                    
+                    epoch_training_loss_mean = np.mean(batch_training_loss)
+                    epoch_valid_loss_mean = np.mean(batch_validation_loss)
+
+                    # log to hist
+                    train_his_loss.append(epoch_training_loss_mean)
+                    validation_his_loss.append(epoch_valid_loss_mean)
+
+                    # Save model if val loss decreases 
+                    if epoch_valid_loss_mean < best_val_loss:
+                        print(f"---Saving model---{time.time()}")
+                        torch.save(model.state_dict(), "best_weights.pt")
+                        torch.save({
+                            'epoch': completed_steps,
+                            'model_state_dict': model.state_dict(),
+                            'optimizer_state_dict': optimizer.state_dict(),
+                            "scheduler": scheduler.state_dict(),
+                            'loss': best_val_loss
+                        }, "checkpoint.pt")
+                                        
+                        torch.save(train_his_loss, "train_his_loss.pt")
+                        torch.save(validation_his_loss, "validation_his_loss.pt")
+
+                        best_val_loss = epoch_valid_loss_mean
+
+                    print("Training Loss:", epoch_training_loss_mean)
+                    print("Validation Loss:", epoch_valid_loss_mean)
+
+                    # Rest list 
+                    batch_training_loss = []
+                    batch_validation_loss = []
+
+                    # Set Model to Training mode
+                    model.train() 
+
+                if completed_steps >= TRAINING_ITERATIONS: 
+                    train = False 
+                
+                    print("Completed!", f"Total training time: {time.time() - start_total:.2f}s")
+                    break
+    except KeyboardInterrupt:
+        print("Ctrl+C → saving checkpoint...")
+        torch.save({
+                    'epoch': completed_steps,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    "scheduler": scheduler.state_dict(),
+                    'loss': best_val_loss
+                }, "checkpoint.pt")
+                                
+        print("Saved")
     
 if __name__ == "__main__":
     main()

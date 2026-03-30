@@ -120,7 +120,7 @@ def validateFile(audio_bytes):
         #print(f"Changed the sampling rate from {orig_sr}: {SAMPLING_RATE}")
         waveform = torchaudio.functional.resample(waveform, orig_freq=orig_sr, new_freq=SAMPLING_RATE) # re-sample to 16.000
 
-    # trim silence
+    # trim silence: 
     segments , _ = F.detect_speech(waveform, SAMPLING_RATE) # return [(start1, end1), (start2, end2), ...]
 
     start = segments[0][0]
