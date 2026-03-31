@@ -1,16 +1,18 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor, Wav2Vec2CTCTokenizer
 import io 
 import torch
 import torchaudio
-import torchaudio.functional as F
+from torchaudio.transforms import Vad
 import logging
 import uuid
 import numpy as np
 from src.inference import inference2
 from src.model import DeepSpeech2
 import whisper # OpenAI
+import json 
+import subprocess
 
 app = FastAPI() 
 logger = logging.getLogger(__name__)
@@ -93,6 +95,75 @@ async def predict(file: UploadFile, la: str = Form(...), model_name: str = Form(
         print(e)
         raise HTTPException(status_code=500, detail="Model inference error")
 
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    await ws.accept()
+    try:
+        model_name = ""
+        la = "en"
+        while True:
+            msg = await ws.receive()
+            if "text" in msg: # JSON 
+                data = json.loads(msg["text"])
+                msg_type = data.get("type")
+
+                if msg_type == "start":
+                    model_name = data.get("model_name")
+                    print("Start config:", model_name)
+                    la = data.get("la")
+
+                elif msg_type == "stop":
+                    print("Stop stream")
+                    break
+
+            # 🔹 2. Nếu là audio binary
+            elif "bytes" in msg:
+                
+                audio_chunk = msg["bytes"]
+
+                # xử lý audio ở đây
+                # print(model_name, la, audio_chunk)
+                audio_np = decode_webm_chunk(audio_chunk)
+                print(audio_np)
+                # a , _, _  = inferenceText(model_name, la, audio_chunk)
+                # print(a)
+                text = "hello"
+
+                await ws.send_json({ # await ws.send_text(text)
+                    "type": "transcript",
+                    "text": text,
+                    "is_final": False
+                })
+
+    except WebSocketDisconnect:
+        print("Client disconnected")
+
+    finally:
+        print("Cleanup here")
+
+def inferenceText(model_name, la, audio_bytes):
+    waveform, duration = validateFile(audio_bytes)
+    language = "en"
+    print(language)
+    if (model_name == "deepspeech2"): 
+        pred_transcript = inference2(waveform, deepSpeech2_model, tokenizer)
+    elif (model_name == "whisper"): 
+        waveform = waveform.flatten()
+        result = whisper_model.transcribe(waveform, language= la) if la != "au" else whisper_model.transcribe(waveform)
+        pred_transcript = result["text"]
+        language =result["language"]
+    else: 
+        waveform = waveform.flatten()
+        # processor = processor_fi if la=="fi" else processor_en
+        # model = model_fi if la=="fi" else model_en
+        processor, model, language = load_model(model_name)
+
+        chunks = chunk_audio(waveform, chunk_sec=10, overlap_sec=1)
+        texts = transcribe_chunks(processor, model, chunks)
+        pred_transcript = " ".join(texts)
+
+    return pred_transcript, language, duration
+
 def load_model(model_name):
     match model_name:
         case "wav2vec2":
@@ -106,6 +177,19 @@ def load_model(model_name):
         case _:
             raise ValueError("Unknown model")
         
+def decode_webm_chunk(audio_bytes):
+    process = subprocess.Popen(
+        ['ffmpeg', '-i', 'pipe:0',
+         '-f', 's16le', '-acodec', 'pcm_s16le',
+         '-ac', '1', '-ar', '16000', 'pipe:1'],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL
+    )
+    pcm_data, _ = process.communicate(input=audio_bytes)
+    audio_np = np.frombuffer(pcm_data, dtype=np.int16).astype(np.float32)/32768.0
+    return audio_np
+
 def validateFile(audio_bytes):  
     if len(audio_bytes) == 0:
             raise ValueError("Empty audio file")
@@ -121,11 +205,10 @@ def validateFile(audio_bytes):
         waveform = torchaudio.functional.resample(waveform, orig_freq=orig_sr, new_freq=SAMPLING_RATE) # re-sample to 16.000
 
     # trim silence: 
-    segments , _ = F.detect_speech(waveform, SAMPLING_RATE) # return [(start1, end1), (start2, end2), ...]
+    vad = Vad(sample_rate=SAMPLING_RATE)
 
-    start = segments[0][0]
-    end = segments[-1][1]
-    waveform = waveform[:, start:end] # trim start, end of audio 
+    waveform = vad(waveform)
+
 
     return waveform, duration 
 
