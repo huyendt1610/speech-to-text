@@ -2,7 +2,7 @@
 venv/
 __pycache__/
 *.pyc
-data/
+ml/data/
 saved_models/
 *.pt
 *.bin
@@ -10,3 +10,6 @@ saved_models/
 images/
 node_modules/
 .env
+outputs/
+
+*.egg-info/

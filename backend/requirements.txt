@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+sqlalchemy 
+alembic
+pydantic==2.5.0
+pydantic-settings==2.1.0
+python-jose[cryptography]
+#passlib[bcrypt] # brute force
+bcrypt
+aiosmtplib
+email-validator
+python-multipart
