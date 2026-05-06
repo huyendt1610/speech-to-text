@@ -1,0 +1,27 @@
+training:
+  batch_size: 32
+  training_iterations: 20000
+  eval_iterations: 2000
+  learning_rate: 1e-4
+  num_workers: 6
+  warmup_ratio: 0.01       # fraction of iterations used for lr warmup
+
+audio:
+  sampling_rate: 16000
+  n_mels: 80
+  top_db: 80.0
+
+model:
+  conv_in_channels: 1
+  conv_out_channels: 32
+  rnn_hidden_size: 128
+  rnn_depth: 2
+  rnn_dropout: 0.3
+
+data:
+  train_splits:
+    - train-clean-100
+    - train-clean-360
+  val_splits:
+    - dev-clean
+  tokenizer_name: facebook/wav2vec2-base

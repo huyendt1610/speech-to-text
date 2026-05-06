@@ -1,72 +1,78 @@
 # pip install torch torchaudio torchcodec 
 # pip install transformers jiwer ipywidgets
-import os 
 import numpy as np 
 from tqdm import tqdm # for displaying process bar
 import torch 
 import torch.nn as nn 
 from torch import optim
 from torch.utils.data import DataLoader
-from transformers import Wav2Vec2CTCTokenizer, get_cosine_schedule_with_warmup 
-from pathlib import Path
-
+import yaml
+from transformers import Wav2Vec2CTCTokenizer, get_cosine_schedule_with_warmup
 import src.dataset.librispeech as librispeech
 from src.dataset.librispeech import collate_fun
 from shared.models import DeepSpeech2
+from src.config import LIBRISPEECH_DIR, CONFIGS_DIR, SAVED_MODELS_DIR
 import warnings
 import time
-import json 
+import json
 
 # import importlib
-
 # importlib.reload(dataset)
 
 warnings.simplefilter('ignore')
 
+def compute_ctc_loss(model, batch, tokenizer, device):
+    # input_lengths: seq_lens after conv layer: where is actual input, where is padding 
+    logits, input_lengths = model(batch["input_values"].to(device), batch["seq_lens"])
+    
+    log_probs = nn.functional.log_softmax(logits, dim=-1) # dim=-1: apply softmax for the last dimension [batch_size, num_classes],
+    log_probs = log_probs.transpose(0,1) # but CTC expect: [Time, batch_size, num_classes] => need to transpose two first dimensions
+
+    #print(log_probs.shape) # => [batch_size, seq_lens, num_classes]
+
+    # print(len(batch["labels"]), sum(batch["target_lengths"])) # the same number 
+
+
+    return nn.functional.ctc_loss(
+        log_probs=log_probs,
+        targets=batch["labels"].to(device),
+        input_lengths=input_lengths,
+        target_lengths=batch["target_lengths"].to(device),
+        blank=tokenizer.pad_token_id,
+        reduction="mean",
+    )
+
 
 def main():
 
-    # file hiện tại
-    CURRENT_FILE = Path.cwd().resolve()  #Path(__file__).resolve()
-    # project root
-    PROJECT_ROOT = CURRENT_FILE.parents[0]
-    DATA_DIR = PROJECT_ROOT / "data"
-    DATASET_CACHE = DATA_DIR / "dataset_cache"
+    # Load config
+    with open(CONFIGS_DIR / "deepspeech2_config.yaml") as f:
+        cfg = yaml.safe_load(f) 
 
-    DATASET_ROOT = "./data/LibriSpeech"
-    os.listdir(DATASET_ROOT)
-    
-    ### Training agurments 
-    BATCH_SIZE = 32
-    TRAINING_ITERATIONS = 20000 # 50000 # how many iterations 
-    EVAL_ITERATIONS = TRAINING_ITERATIONS//10  # 2500 # How often want to evaluate a learning reate 
-    LEARNING_RATE = 1e-4 # 10^(-4)
-    NUM_WORKERS = 6 # no of CPU (if has data preload => set NUM_WORKERS = 0)
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    NUM_WARMUPS_STEPS = np.floor(0.01 * TRAINING_ITERATIONS) 
-    # Phase 1: Warmup, get 1% of trainining steps to increase LEARNING_RATE from 0 to LEARNING_RATE, 0.01 * 20000 = 200 steps
-    # Phase 2: Cosine decay, then decrease learning rate by Cosine function, to smooth learning rate 
+    train_cfg = cfg["training"]
+    audio_cfg = cfg["audio"]
+    model_cfg = cfg["model"]
+    data_cfg = cfg["data"] 
 
-    N_MELS = 80
-    TOP_DB = 80.0
-    SAMPLING_RATE = 16000
+    DATASET_ROOT = str(LIBRISPEECH_DIR)
+    BATCH_SIZE = train_cfg["batch_size"] 
+    TRAINING_ITERATIONS = train_cfg["training_iterations"] 
+    EVAL_ITERATIONS = train_cfg["eval_iterations"] 
+    LEARNING_RATE = train_cfg["learning_rate"] 
+    NUM_WORKERS = train_cfg["num_workers"] 
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu" 
+    NUM_WARMUPS_STEPS = int(train_cfg["warmup_ratio"] * TRAINING_ITERATIONS)
 
-    MODEL_CONFIG = {
-        "conv_in_channels": 1,
-        "conv_out_channels": 32,
-        "rnn_hidden_size": 128,
-        "rnn_depth": 2,
-        "n_mels": N_MELS,
-        "top_db": TOP_DB,
-        "sampling_rate": SAMPLING_RATE
-    }
-    tokenizer = Wav2Vec2CTCTokenizer.from_pretrained("facebook/wav2vec2-base")
+    N_MELS = audio_cfg["n_mels"] 
+    TOP_DB = audio_cfg["top_db"] 
+    SAMPLING_RATE = audio_cfg["sampling_rate"] 
+    MODEL_CONFIG = {**model_cfg, "n_mels": N_MELS, "top_db": TOP_DB, "sampling_rate": SAMPLING_RATE}
+
+    tokenizer = Wav2Vec2CTCTokenizer.from_pretrained(data_cfg["tokenizer_name"])
 
     ### Data loaders ###
-    trainset = librispeech.LibrispeechDataset(path_to_data_root=DATASET_ROOT, include_splits=["train-clean-100", "train-clean-360"], is_from_cached = False, is_augment=True, n_mels=N_MELS, top_db=TOP_DB, sampling_rate=SAMPLING_RATE)
-    sampleset = librispeech.LibrispeechDataset(path_to_data_root=DATASET_ROOT, include_splits=["dev-clean"], is_from_cached = False)
-    #trainset = dataset.LibrispeechDataset(path_to_data_root=DATASET_ROOT, include_splits=["train-clean-100"], is_from_cached = False, cache_version=1, cached_path=DATASET_CACHE)
-    #sampleset = dataset.LibrispeechDataset(path_to_data_root=DATASET_ROOT, include_splits=["dev-clean"], is_from_cached = False, cache_version=2, cached_path=DATASET_CACHE)
+    trainset = librispeech.LibrispeechDataset(path_to_data_root=DATASET_ROOT, include_splits=data_cfg["train_splits"], is_from_cached = False, is_augment=True, n_mels=N_MELS, top_db=TOP_DB, sampling_rate=SAMPLING_RATE)
+    sampleset = librispeech.LibrispeechDataset(path_to_data_root=DATASET_ROOT, include_splits=data_cfg["val_splits"], is_from_cached = False)
 
     trainloader = DataLoader(trainset, batch_size=BATCH_SIZE, 
                             shuffle=True, 
@@ -84,10 +90,11 @@ def main():
 
     
     ### Define the model ###
-    model = DeepSpeech2(conv_in_channels=MODEL_CONFIG["conv_in_channels"], 
+    model = DeepSpeech2(conv_in_channels=MODEL_CONFIG["conv_in_channels"],
                         conv_out_channels=MODEL_CONFIG["conv_out_channels"],
-                        rnn_hidden_size= MODEL_CONFIG["rnn_hidden_size"],  #512
-                        rnn_depth = MODEL_CONFIG["rnn_depth"], # 5 
+                        rnn_hidden_size=MODEL_CONFIG["rnn_hidden_size"],
+                        rnn_depth=MODEL_CONFIG["rnn_depth"],
+                        rnn_dropout=MODEL_CONFIG.get("rnn_dropout", 0.3),
                         tokenizer=tokenizer
                         ).to(DEVICE)
 
@@ -100,7 +107,7 @@ def main():
     scheduler = get_cosine_schedule_with_warmup(optimizer, num_warmup_steps=NUM_WARMUPS_STEPS, num_training_steps=TRAINING_ITERATIONS)
 
     # model.load_state_dict(torch.load("best_weights.pt",weights_only=True)) # best_weights_512_3rnn, best_weights_128_2rnn
-    checkpoint = torch.load("checkpoint.pt", weights_only =False) # 
+    checkpoint = torch.load(SAVED_MODELS_DIR /"checkpoint.pt", weights_only =False) # 
 
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -111,8 +118,8 @@ def main():
     best_val_loss = loss
     completed_steps = completed_epoch
     #scheduler.last_epoch = completed_epoch
-    train_his_loss = torch.load("train_his_loss.pt", weights_only=False)
-    validation_his_loss = torch.load("validation_his_loss.pt", weights_only=False)
+    train_his_loss = torch.load(SAVED_MODELS_DIR / "train_his_loss.pt", weights_only=False)
+    validation_his_loss = torch.load(SAVED_MODELS_DIR / "validation_his_loss.pt", weights_only=False)
 
     # best_val_loss = np.inf 
     # completed_steps = 0
@@ -122,40 +129,20 @@ def main():
     pbar = tqdm(range(TRAINING_ITERATIONS - completed_steps))
     start_total = time.time()
 
-    
-
     try:
         while train: 
             batch_training_loss = []
             batch_validation_loss = []
-            start_epoch = time.time()
-
+            
             for batch in trainloader: 
                 # print(batch)
-                # input_lengths: seq_lens after conv layer: where is actual input, where is padding 
-                logits, input_lengths = model(batch["input_values"].to(DEVICE), batch["seq_lens"])
-                
-                #print(logits.shape)
-                #print(input_lengths)
 
-                log_probs = nn.functional.log_softmax(logits, dim=-1) # dim=-1: apply softmax for the last dimension [batch_size, num_classes],
-                #print(log_probs.shape) # => [batch_size, seq_lens, num_classes]
-                log_probs = log_probs.transpose(0,1) # but CTC expect: [Time, batch_size, num_classes] => need to transpose two first dimensions
-
-                # print(len(batch["labels"]), sum(batch["target_lengths"])) # the same number 
-
-                loss = nn.functional.ctc_loss(
-                    log_probs=log_probs,
-                    targets=batch["labels"].to(DEVICE),
-                    input_lengths=input_lengths, 
-                    target_lengths=batch['target_lengths'].to(DEVICE),
-                    blank=tokenizer.pad_token_id, 
-                    reduction="mean"
-                )
+                loss = compute_ctc_loss(model, batch, tokenizer, DEVICE)
 
                 # print(loss)
 
                 loss.backward() # backpropagation
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=400) 
                 optimizer.step() # update weights
                 optimizer.zero_grad(set_to_none=True) # reset gradients of previous batch, which does not have effect to the next batch
                 scheduler.step() # update learning rate 
@@ -171,23 +158,8 @@ def main():
                     for batch in tqdm(testloader): 
                         ### Pass through model and get input_lengths (pocst convolutions) and logits ###
                         with torch.no_grad(): # tells PyTorch to not calculate the gradients in this block 
-                            logits, input_lengths = model(x=batch["input_values"].to(DEVICE), seq_lens=batch["seq_lens"])
 
-                            #CTC expects log probabilities 
-                            log_probs = nn.functional.log_softmax(logits, dim=-1)
-
-                            # CTC also expects (TxBxC), we have (BxTxC)
-                            log_probs = log_probs.transpose(0,1)
-
-                            # Compute CTC loss 
-                            loss = nn.functional.ctc_loss(
-                                log_probs=log_probs,
-                                targets=batch["labels"].to(DEVICE),
-                                input_lengths=input_lengths, 
-                                target_lengths=batch['target_lengths'].to(DEVICE),
-                                blank=tokenizer.pad_token_id, 
-                                reduction="mean"
-                            )
+                            loss = compute_ctc_loss(model, batch, tokenizer, DEVICE)
 
                             # Store Loss
                             batch_validation_loss.append(loss.item())
@@ -202,10 +174,10 @@ def main():
                     # Save model if val loss decreases 
                     if epoch_valid_loss_mean < best_val_loss:
                         print(f"---Saving model---{time.time()}")
-                        MODEL_DIR = "saved_models"
+                        
 
-                        torch.save(model.state_dict(), f"/{MODEL_DIR}/best_weights.pt")
-                        with open(f"/{MODEL_DIR}/config.json") as f: 
+                        torch.save(model.state_dict(), SAVED_MODELS_DIR /"best_weights.pt")
+                        with open(SAVED_MODELS_DIR / "config.json", 'w') as f: 
                             json.dump(MODEL_CONFIG, f, indent=2)
                         torch.save({
                             'epoch': completed_steps,
@@ -213,10 +185,10 @@ def main():
                             'optimizer_state_dict': optimizer.state_dict(),
                             "scheduler": scheduler.state_dict(),
                             'loss': best_val_loss
-                        }, f"/{MODEL_DIR}/checkpoint.pt")
+                        }, SAVED_MODELS_DIR / "checkpoint.pt")
                                         
-                        torch.save(train_his_loss, f"/{MODEL_DIR}/train_his_loss.pt")
-                        torch.save(validation_his_loss, f"/{MODEL_DIR}/validation_his_loss.pt")
+                        torch.save(train_his_loss, SAVED_MODELS_DIR / "train_his_loss.pt")
+                        torch.save(validation_his_loss, SAVED_MODELS_DIR / "validation_his_loss.pt")
 
                         best_val_loss = epoch_valid_loss_mean
 
@@ -243,9 +215,11 @@ def main():
                     'optimizer_state_dict': optimizer.state_dict(),
                     "scheduler": scheduler.state_dict(),
                     'loss': best_val_loss
-                }, "saved_models/checkpoint.pt")
+                }, SAVED_MODELS_DIR / "checkpoint.pt")
                                 
         print("Saved")
+
+
     
 if __name__ == "__main__":
     main()

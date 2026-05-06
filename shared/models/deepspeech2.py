@@ -148,48 +148,52 @@ class RNNLayer(nn.Module):
 # 
 # Put it all together to create our DeepSpeech2 model 
 
-class DeepSpeech2(nn.Module): 
-    def __init__(self, 
-                conv_in_channels = 1, 
-                conv_out_channels = 32, 
-                rnn_hidden_size = 512, # reduce model size
-                rnn_depth = 5, # reduce model size, but in docs [5-7]
+class DeepSpeech2(nn.Module):
+    def __init__(self,
+                conv_in_channels = 1,
+                conv_out_channels = 32,
+                rnn_hidden_size = 512,
+                rnn_depth = 5,
+                rnn_dropout = 0.3,
                 tokenizer = None
                 ):
-        
+
         super().__init__()
 
         self.feature_extractor = ConvolutionFeatureExtractor(conv_in_channels, conv_out_channels)
 
-        self.output_hidden_features = self.feature_extractor.conv_output_features # 640 features 
+        self.output_hidden_features = self.feature_extractor.conv_output_features # 640 features
 
-        self.rnns = nn.ModuleList(  # a bunch of RNN 
+        self.rnns = nn.ModuleList(  # a bunch of RNN
             [
-                # first layer: input_size = 640 
-                # after that: input_size = 512 * 2 = 1024
                 RNNLayer(input_size=self.output_hidden_features if i == 0 else 2 * rnn_hidden_size, hidden_size=rnn_hidden_size)
                 for i in range(rnn_depth)
             ]
         )
 
-        if tokenizer is None: 
+        # dropout applied between RNN layers (LSTM ignores dropout when num_layers=1)
+        self.rnn_dropout = nn.Dropout(p=rnn_dropout)
+
+        if tokenizer is None:
             tokenizer = Wav2Vec2CTCTokenizer.from_pretrained("facebook/wav2vec2-base")
 
 
         self.head = nn.Sequential( # output: probabilities for each vocab
-            nn.Linear(2 * rnn_hidden_size, rnn_hidden_size), # input, output
+            nn.Linear(2 * rnn_hidden_size, rnn_hidden_size),
             nn.Hardtanh(),
-            nn.Linear(rnn_hidden_size, tokenizer.vocab_size) # fully connected layer to predict what the letter is said at this timestep?
+            nn.Linear(rnn_hidden_size, tokenizer.vocab_size)
         )
 
 
-    def forward(self, x, seq_lens): 
+    def forward(self, x, seq_lens):
         x, final_seq_lens = self.feature_extractor(x, seq_lens)
 
-        for rnn in self.rnns: 
-            x = rnn(x, final_seq_lens) # after convolution layer => final_seq_lens will never change
+        for i, rnn in enumerate(self.rnns):
+            x = rnn(x, final_seq_lens)
+            if i < len(self.rnns) - 1:
+                x = self.rnn_dropout(x)
 
         x = self.head(x)
-        
+
         return x, final_seq_lens
 

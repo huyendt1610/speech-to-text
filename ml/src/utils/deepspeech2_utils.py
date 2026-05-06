@@ -7,9 +7,25 @@ import shutil
 from transformers import Wav2Vec2CTCTokenizer 
 import torchaudio.transforms as T 
 
+def load_audio(path, sampling_rate=16000):
+    audio, sr = torchaudio.load(path, normalize=True)
+    if sr != sampling_rate:
+        audio = torchaudio.functional.resample(audio, sr, sampling_rate)
+    if audio.shape[0] > 1:
+        audio = audio.mean(0, keepdim=True)
+    return audio
+
+
+def audio_to_mel(audio, sampling_rate=16000, n_mels=80, top_db=80.0):
+    mel = T.MelSpectrogram(sample_rate=sampling_rate, n_mels=n_mels)(audio)
+    mel = T.AmplitudeToDB(top_db=top_db)(mel)
+    mel = (mel - mel.mean()) / (mel.std() + 1e-6)
+    return mel
+
 
 def get_libri_file_list(path_to_data_root = "./data/LibriSpeech", 
-                        include_splits = ["dev-clean"]):
+                        include_splits = ["dev-clean"],
+                        max_samples=200):
     librispeech_data = []
     for s in include_splits: 
         path_to_split = os.path.join(path_to_data_root, s)  # format: speaker/section/audio

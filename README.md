@@ -1,50 +1,84 @@
-# Project Name
+# Speech-to-Text Recognition System
 
-This project is a Speech Recognition System powered by DeepSpeech2, Whisper, Wav2Vec2 and built with FastAPI (Backend) and React (Frontend).
+A full-stack web application for audio transcription using multiple deep learning models. Users can upload audio files or record directly in the browser and receive real-time transcriptions.
 
-It provides an end-to-end solution for audio transcription, allowing users to upload audio files through a web interface and receive real-time predictions from a deep learning model. The backend handles model inference and API requests, while the frontend delivers a user-friendly experience for interaction and visualization.
+## Models
 
----
+| Model | Type | Source |
+|-------|------|--------|
+| DeepSpeech2 | Custom-trained (Conv2D + RNN + CTC) | Trained on LibriSpeech |
+| Wav2Vec2 | Pre-trained | `facebook/wav2vec2-base-960h` |
+| Whisper | Pre-trained | OpenAI `tiny` |
 
-## Features
-
-- Speech Recognition Web App (FastAPI + React)
-- Audio Recognition System using DeepSpeech2, Whisper, Wav2Vec2, FastAPI, and React
-- Features include audio file upload, language selection, and efficient model inference for accurate speech-to-text conversion.
-
----
-
-## Installation
-
-## Frontend 
-
-```bash
-# Clone repository
-git clone https://github.com/huyendt1610/speech-to-text.git
-cd sttproject/frontend
-
-# Install dependencies
-npm install --from-lock-json
-npm audit fix
-
-# Run frontend
-npm run start 
-
-# Run backend
-python main.py
+## Architecture
 
 ```
-## Credits / Acknowledgements
+sttproject/
+├── ml/          # Training pipeline, datasets, notebooks
+├── backend/     # FastAPI REST API + inference service
+├── frontend/    # React web app
+└── shared/      # Shared model definitions and utilities
+```
 
-- **Tutorial Inspiration:**  
-  Project structure and logic inspired by 
-  - Priyam Mazumdar YouTube tutorial  
-  - CodeBasics YouTube tutorial  
+## ML Pipeline
 
-- **Icons / Images:**  
-  - Icons by Indygo, FauzIDEA from [Flaticon](https://www.flaticon.com) 
-  - Other images/datasets: see their licenses  
+- **Dataset**: LibriSpeech (`train-clean-100`, `train-clean-360`, `dev-clean`)
+- **Preprocessing**: 16 kHz resampling → mono → VAD → Mel-spectrogram (80 bins) → Z-score normalization
+- **Training**: AdamW optimizer, cosine annealing with warmup, CTC loss, batch size 32
+- **Evaluation**: Word Error Rate (WER) via `jiwer`
 
-- **Libraries:**  
-  - [React](https://reactjs.org/)  
-  - [Material-UI](https://mui.com/)  
+## Tech Stack
+
+- **ML**: PyTorch, torchaudio, HuggingFace Transformers
+- **Backend**: FastAPI, SQLAlchemy, JWT authentication, aiosmtplib
+- **Frontend**: React, Material-UI, MediaRecorder API
+
+## Setup
+
+### Backend
+
+```bash
+cd backend
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm start
+```
+
+### Training
+
+```bash
+cd ml
+pip install -r requirements.txt
+python src/trainer.py
+```
+
+Environment variables (create `backend/.env`):
+
+```env
+DATABASE_URL=sqlite:///./app/db/stt.db
+JWT_SECRET_KEY=your-secret-key
+CORS_ORIGINS=http://localhost:3000
+DEEPSPEECH2_MODEL_PATH=../ml/saved_models/best_weights.pt
+DEEPSPEECH2_CONFIG_PATH=../ml/saved_models/config.json
+WHISPER_MODEL_NAME=tiny
+```
+
+## API
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/auth/register` | Register new user |
+| POST | `/api/auth/login` | Login, returns JWT |
+| POST | `/api/stt/predict` | Transcribe audio file |
+
+`POST /api/stt/predict` accepts `multipart/form-data`:
+- `file` — audio file (max 5MB)
+- `language` — language code or `au` for auto-detect
+- `model` — `deepspeech2`, `wav2vec2`, `wav2vec2-finnish`, or `whisper`
