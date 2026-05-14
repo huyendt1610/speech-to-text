@@ -34,7 +34,7 @@ SAMPLING_RATE = 16_000
 
 # Common Voice Finnish — requires HuggingFace login for some versions
 # If you get an auth error: huggingface-cli login
-DATASET_NAME = "mozilla-foundation/common_voice_11_0"
+DATASET_NAME = "facebook/voxpopuli"
 DATASET_LANG = "fi"
 
 # ─── Google Drive setup ───────────────────────────────────────────────────────
@@ -89,11 +89,11 @@ resume_from_drive(OUTPUT_DIR)
 # ─── 1. Load dataset ──────────────────────────────────────────────────────────
 
 print("Loading dataset...")
-train_data = load_dataset(DATASET_NAME, DATASET_LANG, split="train",    trust_remote_code=True)
+train_data = load_dataset(DATASET_NAME, DATASET_LANG, split="train")
 val_data   = load_dataset(DATASET_NAME, DATASET_LANG, split="validation", trust_remote_code=True)
 
 # Keep only audio + sentence columns
-cols_to_remove = [c for c in train_data.column_names if c not in ("audio", "sentence")]
+cols_to_remove = [c for c in train_data.column_names if c not in ("audio", "normalized_text")]
 train_data = train_data.remove_columns(cols_to_remove)
 val_data   = val_data.remove_columns(cols_to_remove)
 
@@ -103,7 +103,7 @@ val_data   = val_data.remove_columns(cols_to_remove)
 CHARS_TO_REMOVE = r'[\,\?\.\!\-\;\:\"\"\%\'\"\`\']'
 
 def clean_text(batch):
-    batch["sentence"] = re.sub(CHARS_TO_REMOVE, "", batch["sentence"]).lower()
+    batch["normalized_text"] = re.sub(CHARS_TO_REMOVE, "", batch["normalized_text"]).lower()
     return batch
 
 train_data = train_data.map(clean_text)
@@ -113,7 +113,7 @@ val_data   = val_data.map(clean_text)
 # ─── 3. Build vocabulary ──────────────────────────────────────────────────────
 
 def extract_chars(batch):
-    all_text = " ".join(batch["sentence"])
+    all_text = " ".join(batch["normalized_text"])
     vocab = list(set(all_text))
     return {"vocab": [vocab], "all_text": [all_text]}
 
@@ -170,7 +170,7 @@ def preprocess(batch):
     batch["input_length"] = len(batch["input_values"])
 
     with processor.as_target_processor():
-        batch["labels"] = processor(batch["sentence"]).input_ids
+        batch["labels"] = processor(batch["normalized_text"]).input_ids
     return batch
 
 print("Preprocessing train...")
@@ -201,7 +201,7 @@ class DataCollatorCTCWithPadding:
 
         # Replace padding token id with -100 so it's ignored in loss
         labels = labels_batch["input_ids"].masked_fill(
-            labels_batch.attention_mask.ne(1), -100
+            labels_batch.attention_mask.ne(1), -100             # ne(1): not equal 1 => replace 0 (masked position) = -100
         )
         batch["labels"] = labels
         return batch
@@ -252,7 +252,7 @@ training_args = TrainingArguments(
     evaluation_strategy="steps",
     num_train_epochs=30,
     gradient_checkpointing=True,
-    fp16=True,                          # requires GPU
+    fp16=True,                          # # bật mixed precision but requires GPU
     save_steps=400,
     eval_steps=400,
     logging_steps=400,

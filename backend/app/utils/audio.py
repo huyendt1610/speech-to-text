@@ -7,6 +7,8 @@ import numpy as np
 from app.config import settings
 import io 
 
+_vad = Vad(sample_rate=settings.SAMPLING_RATE) 
+
 def decode_webm_chunk(audio_bytes):
     process = subprocess.Popen(
         ['ffmpeg', '-i', 'pipe:0',
@@ -37,8 +39,7 @@ def validateFile(audio_bytes):
     # trim silence: reduce audio length, increase inference speed, improve accuracy 
     # trigger_level: level to determind speech; default 7, but in [6, 10], if too much noise => incrase 8, else if miss speech => reduce to 6
     # VAD = Voice Activity Detection
-    vad = Vad(sample_rate=settings.SAMPLING_RATE) 
-    waveform = vad(waveform)
+    waveform = _vad(waveform)
     return waveform, duration 
 
 def transcribe_chunks(processor, model, chunks, sr =16000, device="cpu"):

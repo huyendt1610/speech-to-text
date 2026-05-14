@@ -10,3 +10,5 @@ bcrypt
 aiosmtplib
 email-validator
 python-multipart
+faster-whisper
+optimum[onnxruntime]

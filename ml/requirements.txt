@@ -9,3 +9,4 @@ transformers==5.2.0
 openai-whisper #faster-whisper
 jiwer
 pandas
+datasets

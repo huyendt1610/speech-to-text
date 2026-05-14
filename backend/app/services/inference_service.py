@@ -1,12 +1,14 @@
 import torch 
-import whisper
+# import whisper
 import torchaudio.transforms as T
-from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor, Wav2Vec2CTCTokenizer
+from transformers import Wav2Vec2CTCTokenizer, Wav2Vec2Processor
+# from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor, Wav2Vec2CTCTokenizer
+from optimum.onnxruntime import ORTModelForCTC
 from app.config import settings
 from app.utils.audio import chunk_audio, transcribe_chunks
 from shared.models.deepspeech2 import DeepSpeech2
 import json 
-
+from faster_whisper import WhisperModel 
 
 class DeepSpeech2Inference: 
     def __init__(self, model_path: str, config_path: str):
@@ -16,6 +18,11 @@ class DeepSpeech2Inference:
         model = DeepSpeech2(rnn_hidden_size=config["rnn_hidden_size"],rnn_depth = config["rnn_depth"] )
         model.load_state_dict(torch.load(model_path,weights_only=True)) 
         model.eval() 
+
+        # Optimization
+        model = torch.compile(model) # compile to graph, then quantize
+
+        # torch.onnx.export(model, )
 
         self.device = settings.DEVICE
 
@@ -53,20 +60,34 @@ class DeepSpeech2Inference:
 class Wav2Vec2Inference: 
     def __init__(self, model_name: str):
         self.processor = Wav2Vec2Processor.from_pretrained(model_name) # wav2vec2-large/base-960h
-        self.model = Wav2Vec2ForCTC.from_pretrained(model_name).to(settings.DEVICE)
+        # self.model = Wav2Vec2ForCTC.from_pretrained(model_name).to(settings.DEVICE)
+
+        # optimize using onnxruntime
+        # export=True → automatically export ONNX first time, then cache
+        # provider = .to(device)
+        provider = "CUDAExecutionProvider" if settings.DEVICE == "cuda" else "CPUExecutionProvider"
+        self.model = ORTModelForCTC.from_pretrained(model_name, export= True, provider=provider)
 
     def transcribe(self, waveform, language): 
         waveform = waveform.flatten()
         chunks = chunk_audio(waveform)
-        texts = transcribe_chunks(self.processor, self.model, chunks, settings.SAMPLING_RATE, settings.DEVICE)
+        # ORT get CPU tensor => automatically copy to GPU via CUDAExecutionProvider
+        texts = transcribe_chunks(self.processor, self.model, chunks, settings.SAMPLING_RATE, 'cpu' ) #settings.DEVICE
         return " ".join(texts), language
     
 class WhisperInference: 
     def __init__(self, model_name: str):
-        self.model = whisper.load_model(model_name, device=settings.DEVICE)
+        # self.model = whisper.load_model(model_name, device=settings.DEVICE)
+        self.model = WhisperModel('medium', device=settings.DEVICE, compute_type='int8' if settings.DEVICE == 'cpu' else 'float16')
 
     def transcribe(self, waveform, la):
-        waveform = waveform.flatten()
+        # waveform = waveform.flatten()
 
-        result = self.model.transcribe(waveform, language=la) if la != "au" else self.model.transcribe(waveform)
-        return result["text"], result["language"]
+        # result = self.model.transcribe(waveform, language=la) if la != "au" else self.model.transcribe(waveform)
+        # return result["text"], result["language"]
+
+        waveform = waveform.flatten().numpy()  # faster-whisper cần numpy array
+        language = la if la != "au" else None  # None = auto detect
+        segments, info = self.model.transcribe(waveform, language=language, beam_size=1)
+        text = " ".join([s.text for s in segments])
+        return text, info.language
